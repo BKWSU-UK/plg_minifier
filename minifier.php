@@ -9,10 +9,18 @@ use Joomla\CMS\Log\Log;
 
 class PlgSystemMinifier extends CMSPlugin
 {
+    /** @var JApplicationCms Application object */
     protected $app;
+    
+    /** @var boolean Auto load language files */
     protected $autoloadLanguage = true;
+    
+    /** @var string Category for logging */
     protected $logCategory = 'plg_system_minifier';
     
+    /**
+     * Constructor: Sets up autoloader and logging
+     */
     public function __construct(&$subject, $config = array())
     {
         parent::__construct($subject, $config);
@@ -39,6 +47,10 @@ class PlgSystemMinifier extends CMSPlugin
         }
     }
 
+    /**
+     * Plugin event triggered after page rendering
+     * Handles both CSS and JS minification if enabled
+     */
     public function onAfterRender()
     {
         // Check if any minification is enabled
@@ -71,6 +83,11 @@ class PlgSystemMinifier extends CMSPlugin
         $this->app->setBody($body);
     }
 
+    /**
+     * Processes and minifies CSS files found in the page
+     * @param string $body Page HTML content
+     * @return string Modified HTML content
+     */
     protected function processCssFiles($body)
     {
         // Find all CSS files, including those with query parameters
@@ -122,6 +139,11 @@ class PlgSystemMinifier extends CMSPlugin
         return $body;
     }
 
+    /**
+     * Processes and minifies JavaScript files found in the page
+     * @param string $body Page HTML content
+     * @return string Modified HTML content
+     */
     protected function processJsFiles($body)
     {
         // Find all JS files, including those with query parameters
@@ -173,11 +195,45 @@ class PlgSystemMinifier extends CMSPlugin
         return $body;
     }
 
+    /**
+     * Determines if a CSS file should be skipped (external or already minified)
+     */
     protected function shouldSkipFile($cssFile)
     {
         return (strpos($cssFile, '//') === 0 || 
                 strpos($cssFile, 'http') === 0 || 
                 strpos($cssFile, '.min.css') !== false);
+    }
+
+    /**
+     * Resolves file paths considering various Joomla locations
+     * @param string $file Original file path
+     * @param string $rootPath Joomla root path
+     * @return string Resolved absolute file path
+     */
+    protected function resolvePath($file, $rootPath)
+    {
+        // Handle absolute paths starting with /
+        if (strpos($file, '/') === 0) {
+            return $rootPath . $file;
+        }
+        
+        // Check if file is from a module (contains /modules/)
+        if (strpos($file, '/modules/') !== false) {
+            // Extract the path after /modules/
+            $modulePath = substr($file, strpos($file, '/modules/'));
+            return $rootPath . $modulePath;
+        }
+        
+        // Check if file is from media folder
+        if (strpos($file, '/media/') !== false) {
+            // Extract the path after /media/
+            $mediaPath = substr($file, strpos($file, '/media/'));
+            return $rootPath . $mediaPath;
+        }
+        
+        // Default case for relative paths
+        return $rootPath . '/' . $file;
     }
 
     protected function shouldSkipJsFile($jsFile)
@@ -271,31 +327,6 @@ class PlgSystemMinifier extends CMSPlugin
         }
 
         return dirname($jsFile) . '/' . File::stripExt(basename($jsFile)) . '.min.js';
-    }
-
-    protected function resolvePath($file, $rootPath)
-    {
-        // Handle absolute paths starting with /
-        if (strpos($file, '/') === 0) {
-            return $rootPath . $file;
-        }
-        
-        // Check if file is from a module (contains /modules/)
-        if (strpos($file, '/modules/') !== false) {
-            // Extract the path after /modules/
-            $modulePath = substr($file, strpos($file, '/modules/'));
-            return $rootPath . $modulePath;
-        }
-        
-        // Check if file is from media folder
-        if (strpos($file, '/media/') !== false) {
-            // Extract the path after /media/
-            $mediaPath = substr($file, strpos($file, '/media/'));
-            return $rootPath . $mediaPath;
-        }
-        
-        // Default case for relative paths
-        return $rootPath . '/' . $file;
     }
 
     protected function ensureWritableDirectory($directory)
