@@ -215,6 +215,106 @@ class PlgSystemMinifier extends CMSPlugin
         $excludePaths = $this->params->get('exclude_paths', '');
         $excludeArray = array_filter(array_map('trim', explode("\n", $excludePaths)));
 
+        // If combine_js is enabled, collect all JS content
+        if ($this->params->get('combine_js', 0)) {
+            $combinedContent = '';
+            $firstMatch = null;
+            $processedFiles = [];
+            $combineAll = $this->params->get('combine_all_js', 0);
+
+            // Process files in the exact order they appear
+            foreach ($matches[2] as $index => $jsFile) {
+                // Save first match for replacement
+                if ($firstMatch === null) {
+                    $firstMatch = $matches[0][$index];
+                }
+
+                // Extract query parameters
+                if (strpos($jsFile, '?') !== false) {
+                    list($cleanJsFile, $queryString) = explode('?', $jsFile, 2);
+                } else {
+                    $cleanJsFile = $jsFile;
+                }
+
+                // Skip if file matches excluded paths
+                if ($this->isExcluded($cleanJsFile, $excludeArray)) {
+                    continue;
+                }
+
+                // Skip external files
+                if (strpos($cleanJsFile, '//') === 0 || strpos($cleanJsFile, 'http') === 0) {
+                    continue;
+                }
+
+                $jsPath = $this->resolvePath($cleanJsFile, $rootPath);
+                if (file_exists($jsPath) && !in_array($jsPath, $processedFiles)) {
+                    // For minified files, only add if combine_all_js is enabled
+                    if (strpos($cleanJsFile, '.min.js') !== false && !$combineAll) {
+                        continue;
+                    }
+
+                    if ($this->params->get('debug', 0)) {
+                        $this->app->enqueueMessage(sprintf('Adding JS file to combination: %s', $jsPath), 'debug');
+                    }
+
+                    // Read the file content directly to maintain order
+                    $fileContent = file_get_contents($jsPath);
+                    
+                    // Minify only if it's not already minified
+                    if (strpos($cleanJsFile, '.min.js') === false) {
+                        $minifier = new Minify\JS($fileContent);
+                        $fileContent = $minifier->minify();
+                    }
+
+                    $combinedContent .= "/* File: {$cleanJsFile} */\n" . $fileContent . "\n";
+                    $processedFiles[] = $jsPath;
+
+                    // Remove this JS script tag from body except for the first one
+                    if ($firstMatch !== $matches[0][$index]) {
+                        // Replace entire script tag instead of just the matched pattern
+                        $scriptPattern = preg_quote($matches[0][$index], '/') . '(?:\s*<\/script>)?';
+                        $body = preg_replace('/' . $scriptPattern . '/', '', $body);
+                    }
+                }
+            }
+
+            if ($combinedContent && $firstMatch) {
+                // Generate hash for the combined content
+                $hash = substr(md5($combinedContent), 0, 8);
+                
+                // Create the combined file
+                $combinedFilename = "combined-{$hash}.js";
+                $combinedPath = JPATH_ROOT . '/media/cache/js/' . $combinedFilename;
+                
+                // Ensure directory exists
+                $cacheDir = dirname($combinedPath);
+                if (!is_dir($cacheDir)) {
+                    mkdir($cacheDir, 0755, true);
+                }
+
+                // Save the combined file
+                file_put_contents($combinedPath, $combinedContent);
+
+                if ($this->params->get('debug', 0)) {
+                    $this->app->enqueueMessage(
+                        sprintf('Created combined JS file: %s', $combinedFilename),
+                        'debug'
+                    );
+                }
+
+                // Replace the first JS script tag with the combined file
+                $combinedUrl = Uri::root(true) . '/media/cache/js/' . $combinedFilename;
+                $replacement = '<script src="' . $combinedUrl . '"></script>';
+                
+                // Create pattern to match the entire script tag including its closing tag
+                $firstMatchPattern = preg_quote($firstMatch, '/') . '(?:\s*<\/script>)?';
+                $body = preg_replace('/' . $firstMatchPattern . '/', $replacement, $body, 1);
+            }
+
+            return $body;
+        }
+
+        // If not combining, proceed with individual file minification
         foreach ($matches[2] as $index => $jsFile) {
             // Extract query parameters
             $queryString = '';

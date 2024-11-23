@@ -38,38 +38,6 @@
                     <option value="1">JON</option>
                 </field>
                 <field
-                    name="js_enabled"
-                    type="radio"
-                    label="PLG_SYSTEM_MINIFIER_FIELD_JS_ENABLED_LABEL"
-                    description="PLG_SYSTEM_MINIFIER_FIELD_JS_ENABLED_DESC"
-                    default="1"
-                    layout="joomla.form.field.radio.switcher"
-                    >
-                    <option value="0">JOFF</option>
-                    <option value="1">JON</option>
-                </field>
-                <field
-                    name="debug"
-                    type="radio"
-                    label="PLG_SYSTEM_MINIFIER_FIELD_DEBUG_LABEL"
-                    description="PLG_SYSTEM_MINIFIER_FIELD_DEBUG_DESC"
-                    default="0"
-                    layout="joomla.form.field.radio.switcher"
-                    >
-                    <option value="0">JOFF</option>
-                    <option value="1">JON</option>
-                </field>
-                <field
-                    name="exclude_paths"
-                    type="textarea"
-                    label="PLG_SYSTEM_MINIFIER_FIELD_EXCLUDE_PATHS_LABEL"
-                    description="PLG_SYSTEM_MINIFIER_FIELD_EXCLUDE_PATHS_DESC"
-                    rows="5"
-                    cols="30"
-                    filter="raw"
-                    hint="PLG_SYSTEM_MINIFIER_FIELD_EXCLUDE_PATHS_HINT"
-                />
-                <field
                     name="combine_css"
                     type="radio"
                     label="PLG_SYSTEM_MINIFIER_FIELD_COMBINE_CSS_LABEL"
@@ -85,6 +53,62 @@
                     type="radio"
                     label="PLG_SYSTEM_MINIFIER_FIELD_COMBINE_ALL_CSS_LABEL"
                     description="PLG_SYSTEM_MINIFIER_FIELD_COMBINE_ALL_CSS_DESC"
+                    default="0"
+                    layout="joomla.form.field.radio.switcher"
+                    showon="combine_css:1"
+                    >
+                    <option value="0">JOFF</option>
+                    <option value="1">JON</option>
+                </field>
+                <field
+                    name="js_enabled"
+                    type="radio"
+                    label="PLG_SYSTEM_MINIFIER_FIELD_JS_ENABLED_LABEL"
+                    description="PLG_SYSTEM_MINIFIER_FIELD_JS_ENABLED_DESC"
+                    default="1"
+                    layout="joomla.form.field.radio.switcher"
+                    >
+                    <option value="0">JOFF</option>
+                    <option value="1">JON</option>
+                </field>
+                <field
+                    name="combine_js"
+                    type="radio"
+                    label="PLG_SYSTEM_MINIFIER_FIELD_COMBINE_JS_LABEL"
+                    description="PLG_SYSTEM_MINIFIER_FIELD_COMBINE_JS_DESC"
+                    default="0"
+                    layout="joomla.form.field.radio.switcher"
+                    >
+                    <option value="0">JOFF</option>
+                    <option value="1">JON</option>
+                </field>
+                <field
+                    name="combine_all_js"
+                    type="radio"
+                    label="PLG_SYSTEM_MINIFIER_FIELD_COMBINE_ALL_JS_LABEL"
+                    description="PLG_SYSTEM_MINIFIER_FIELD_COMBINE_ALL_JS_DESC"
+                    default="0"
+                    layout="joomla.form.field.radio.switcher"
+                    showon="combine_js:1"
+                    >
+                    <option value="0">JOFF</option>
+                    <option value="1">JON</option>
+                </field>
+                <field
+                    name="exclude_paths"
+                    type="textarea"
+                    label="PLG_SYSTEM_MINIFIER_FIELD_EXCLUDE_PATHS_LABEL"
+                    description="PLG_SYSTEM_MINIFIER_FIELD_EXCLUDE_PATHS_DESC"
+                    rows="5"
+                    cols="30"
+                    filter="raw"
+                    hint="PLG_SYSTEM_MINIFIER_FIELD_EXCLUDE_PATHS_HINT"
+                />
+                <field
+                    name="debug"
+                    type="radio"
+                    label="PLG_SYSTEM_MINIFIER_FIELD_DEBUG_LABEL"
+                    description="PLG_SYSTEM_MINIFIER_FIELD_DEBUG_DESC"
                     default="0"
                     layout="joomla.form.field.radio.switcher"
                     >
