@@ -17,7 +17,12 @@
         <folder>vendor</folder>
         <folder>language</folder>
     </files>
-    
+
+    <languages folder="language">
+        <language tag="en-GB">en-GB/en-GB.plg_system_minifier.ini</language>
+        <language tag="en-GB">en-GB/en-GB.plg_system_minifier.sys.ini</language>
+    </languages>
+
     <config>
         <fields name="params">
             <fieldset name="basic">
@@ -64,6 +69,28 @@
                     filter="raw"
                     hint="PLG_SYSTEM_MINIFIER_FIELD_EXCLUDE_PATHS_HINT"
                 />
+                <field
+                    name="combine_css"
+                    type="radio"
+                    label="PLG_SYSTEM_MINIFIER_FIELD_COMBINE_CSS_LABEL"
+                    description="PLG_SYSTEM_MINIFIER_FIELD_COMBINE_CSS_DESC"
+                    default="0"
+                    layout="joomla.form.field.radio.switcher"
+                    >
+                    <option value="0">JOFF</option>
+                    <option value="1">JON</option>
+                </field>
+                <field
+                    name="combine_all_css"
+                    type="radio"
+                    label="PLG_SYSTEM_MINIFIER_FIELD_COMBINE_ALL_CSS_LABEL"
+                    description="PLG_SYSTEM_MINIFIER_FIELD_COMBINE_ALL_CSS_DESC"
+                    default="0"
+                    layout="joomla.form.field.radio.switcher"
+                    >
+                    <option value="0">JOFF</option>
+                    <option value="1">JON</option>
+                </field>
             </fieldset>
         </fields>
     </config>
