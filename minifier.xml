@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="utf-8"?>
+<extension type="plugin" group="system" method="upgrade">
+    <name>plg_system_minifier</name>
+    <author>Allan Schweitz</author>
+    <creationDate>November 2024</creationDate>
+    <copyright>(C) 2024 Brahma Kumaris. All rights reserved.</copyright>
+    <license>GNU General Public License version 2 or later</license>
+    <authorEmail>allan@bkconnect.net</authorEmail>
+    <authorUrl>www.brahmakumaris.org</authorUrl>
+    <version>1.0.0</version>
+    <description>PLG_SYSTEM_MINIFIER_XML_DESCRIPTION</description>
+    
+    <files>
+        <filename plugin="minifier">minifier.php</filename>
+        <filename>composer.json</filename>
+        <filename>composer.lock</filename>
+        <folder>vendor</folder>
+        <folder>language</folder>
+    </files>
+    
+    <config>
+        <fields name="params">
+            <fieldset name="basic">
+                <field
+                    name="enabled"
+                    type="radio"
+                    label="PLG_SYSTEM_MINIFIER_FIELD_ENABLED_LABEL"
+                    description="PLG_SYSTEM_MINIFIER_FIELD_ENABLED_DESC"
+                    default="1"
+                    layout="joomla.form.field.radio.switcher"
+                    >
+                    <option value="0">JOFF</option>
+                    <option value="1">JON</option>
+                </field>
+                <field
+                    name="js_enabled"
+                    type="radio"
+                    label="PLG_SYSTEM_MINIFIER_FIELD_JS_ENABLED_LABEL"
+                    description="PLG_SYSTEM_MINIFIER_FIELD_JS_ENABLED_DESC"
+                    default="1"
+                    layout="joomla.form.field.radio.switcher"
+                    >
+                    <option value="0">JOFF</option>
+                    <option value="1">JON</option>
+                </field>
+                <field
+                    name="debug"
+                    type="radio"
+                    label="PLG_SYSTEM_MINIFIER_FIELD_DEBUG_LABEL"
+                    description="PLG_SYSTEM_MINIFIER_FIELD_DEBUG_DESC"
+                    default="0"
+                    layout="joomla.form.field.radio.switcher"
+                    >
+                    <option value="0">JOFF</option>
+                    <option value="1">JON</option>
+                </field>
+                <field
+                    name="exclude_paths"
+                    type="textarea"
+                    label="PLG_SYSTEM_MINIFIER_FIELD_EXCLUDE_PATHS_LABEL"
+                    description="PLG_SYSTEM_MINIFIER_FIELD_EXCLUDE_PATHS_DESC"
+                    rows="5"
+                    cols="30"
+                    filter="raw"
+                    hint="PLG_SYSTEM_MINIFIER_FIELD_EXCLUDE_PATHS_HINT"
+                />
+            </fieldset>
+        </fields>
+    </config>
+</extension> 
