@@ -105,16 +105,14 @@ class PlgSystemMinifier extends CMSPlugin
         // If combine_css is enabled, collect all CSS content
         if ($this->params->get('combine_css', 0)) {
             $combinedContent = '';
-            $firstMatch = null;
+            $lastMatch = null;
             $processedFiles = [];
             $combineAll = $this->params->get('combine_all_css', 0);
 
             // Process files in the exact order they appear
             foreach ($matches[2] as $index => $cssFile) {
-                // Save first match for replacement
-                if ($firstMatch === null) {
-                    $firstMatch = $matches[0][$index];
-                }
+                // Save last match for replacement instead of first
+                $lastMatch = $matches[0][$index];
 
                 // Extract query parameters
                 if (strpos($cssFile, '?') !== false) {
@@ -156,14 +154,12 @@ class PlgSystemMinifier extends CMSPlugin
                     $combinedContent .= "/* File: {$cleanCssFile} */\n" . $fileContent . "\n";
                     $processedFiles[] = $cssPath;
 
-                    // Remove this CSS link from body except for the first one
-                    if ($firstMatch !== $matches[0][$index]) {
-                        $body = str_replace($matches[0][$index], '', $body);
-                    }
+                    // Remove all CSS links as we'll add the combined one at the end
+                    $body = str_replace($matches[0][$index], '', $body);
                 }
             }
 
-            if ($combinedContent && $firstMatch) {
+            if ($combinedContent && $lastMatch) {
                 // Generate hash for the combined content
                 $hash = substr(md5($combinedContent), 0, 8);
                 
@@ -187,10 +183,48 @@ class PlgSystemMinifier extends CMSPlugin
                     );
                 }
 
-                // Replace the first CSS link with the combined file
+                // Add the combined file link at the end of </head>
                 $combinedUrl = Uri::root(true) . '/media/cache/css/' . $combinedFilename;
                 $replacement = '<link href="' . $combinedUrl . '" rel="stylesheet">';
-                $body = str_replace($firstMatch, $replacement, $body);
+                $body = str_replace('</head>', $replacement . "\n</head>", $body);
+            }
+        }
+        // Add this else block to handle individual CSS minification when combine is disabled
+        else {
+            // Process individual files
+            foreach ($matches[2] as $index => $cssFile) {
+                // Extract query parameters
+                $queryString = '';
+                if (strpos($cssFile, '?') !== false) {
+                    list($cleanCssFile, $queryString) = explode('?', $cssFile, 2);
+                    $queryString = '?' . $queryString;
+                } else {
+                    $cleanCssFile = $cssFile;
+                }
+                
+                Log::add('CSS File: ' . $cssFile, Log::DEBUG, $this->logCategory);
+                
+                // Skip if file matches excluded paths
+                if ($this->isExcluded($cleanCssFile, $excludeArray)) {
+                    continue;
+                }
+
+                // Skip external CSS files and already minified files
+                if ($this->shouldSkipCssFile($cleanCssFile)) {
+                    continue;
+                }
+
+                try {
+                    $minifiedUrl = $this->minifyCssFile($cleanCssFile, $rootPath);
+                    if ($minifiedUrl) {
+                        $body = str_replace($matches[0][$index], 
+                            str_replace($cssFile, $minifiedUrl . $queryString, $matches[0][$index]), 
+                            $body);
+                    }
+                } catch (Exception $e) {
+                    Log::add('CSS Minification failed: ' . $e->getMessage() . ' for file: ' . $cssFile, Log::ERROR, $this->logCategory);
+                    continue;
+                }
             }
         }
 
@@ -204,6 +238,11 @@ class PlgSystemMinifier extends CMSPlugin
      */
     protected function processJsFiles($body)
     {
+        // If JS minification is disabled, return body unchanged
+        if (!$this->params->get('js_enabled', 1)) {
+            return $body;
+        }
+
         // Find all JS files, including those with query parameters
         preg_match_all('/<script[^>]+src=([\'"])(.*?\.js(?:\?[^"\']*)?)\1[^>]*>/i', $body, $matches);
 
@@ -314,39 +353,42 @@ class PlgSystemMinifier extends CMSPlugin
             return $body;
         }
 
-        // If not combining, proceed with individual file minification
-        foreach ($matches[2] as $index => $jsFile) {
-            // Extract query parameters
-            $queryString = '';
-            if (strpos($jsFile, '?') !== false) {
-                list($cleanJsFile, $queryString) = explode('?', $jsFile, 2);
-                $queryString = '?' . $queryString;
-            } else {
-                $cleanJsFile = $jsFile;
-            }
-            
-            Log::add('JS File: ' . $jsFile, Log::DEBUG, $this->logCategory);
-            
-            // Skip if file matches excluded paths
-            if ($this->isExcluded($cleanJsFile, $excludeArray)) {
-                continue;
-            }
-
-            // Skip external JS files and already minified files
-            if ($this->shouldSkipJsFile($cleanJsFile)) {
-                continue;
-            }
-
-            try {
-                $minifiedUrl = $this->minifyJsFile($cleanJsFile, $rootPath);
-                if ($minifiedUrl) {
-                    $body = str_replace($matches[0][$index], 
-                        str_replace($jsFile, $minifiedUrl . $queryString, $matches[0][$index]), 
-                        $body);
+        // Only process individual files if js_enabled is true
+        elseif ($this->params->get('js_enabled', 1)) {
+            // Process individual files
+            foreach ($matches[2] as $index => $jsFile) {
+                // Extract query parameters
+                $queryString = '';
+                if (strpos($jsFile, '?') !== false) {
+                    list($cleanJsFile, $queryString) = explode('?', $jsFile, 2);
+                    $queryString = '?' . $queryString;
+                } else {
+                    $cleanJsFile = $jsFile;
                 }
-            } catch (Exception $e) {
-                Log::add('JS Minification failed: ' . $e->getMessage() . ' for file: ' . $jsFile, Log::ERROR, $this->logCategory);
-                continue;
+                
+                Log::add('JS File: ' . $jsFile, Log::DEBUG, $this->logCategory);
+                
+                // Skip if file matches excluded paths
+                if ($this->isExcluded($cleanJsFile, $excludeArray)) {
+                    continue;
+                }
+
+                // Skip external JS files and already minified files
+                if ($this->shouldSkipJsFile($cleanJsFile)) {
+                    continue;
+                }
+
+                try {
+                    $minifiedUrl = $this->minifyJsFile($cleanJsFile, $rootPath);
+                    if ($minifiedUrl) {
+                        $body = str_replace($matches[0][$index], 
+                            str_replace($jsFile, $minifiedUrl . $queryString, $matches[0][$index]), 
+                            $body);
+                    }
+                } catch (Exception $e) {
+                    Log::add('JS Minification failed: ' . $e->getMessage() . ' for file: ' . $jsFile, Log::ERROR, $this->logCategory);
+                    continue;
+                }
             }
         }
 
@@ -356,7 +398,7 @@ class PlgSystemMinifier extends CMSPlugin
     /**
      * Determines if a CSS file should be skipped (external or already minified)
      */
-    protected function shouldSkipFile($cssFile)
+    protected function shouldSkipCssFile($cssFile)
     {
         // If combine_all_css is enabled, don't skip any local files
         if ($this->params->get('combine_all_css', 0)) {
@@ -402,9 +444,22 @@ class PlgSystemMinifier extends CMSPlugin
 
     protected function shouldSkipJsFile($jsFile)
     {
-        return (strpos($jsFile, '//') === 0 || 
-                strpos($jsFile, 'http') === 0 || 
-                strpos($jsFile, '.min.js') !== false);
+        // Skip external files
+        if (strpos($jsFile, '//') === 0 || strpos($jsFile, 'http') === 0) {
+            return true;
+        }
+
+        // If JS minification is disabled, skip minified files to use original versions
+        if (!$this->params->get('js_enabled', 1) && strpos($jsFile, '.min.js') !== false) {
+            return true;
+        }
+
+        // If JS minification is enabled, skip already minified files
+        if ($this->params->get('js_enabled', 1) && strpos($jsFile, '.min.js') !== false) {
+            return true;
+        }
+
+        return false;
     }
 
     protected function isExcluded($cssFile, $excludeArray)
@@ -476,8 +531,9 @@ class PlgSystemMinifier extends CMSPlugin
             return false;
         }
 
-        // Create minified filename
-        $minifiedPath = dirname($jsPath) . '/' . File::stripExt(basename($jsPath)) . '.min.js';
+        // Create minified filename with optional obfuscation indicator
+        $suffix = $this->params->get('js_obfuscate', 0) ? '.obf.min.js' : '.min.js';
+        $minifiedPath = dirname($jsPath) . '/' . File::stripExt(basename($jsPath)) . $suffix;
         
         // Ensure target directory exists and is writable
         if (!$this->ensureWritableDirectory(dirname($minifiedPath))) {
@@ -486,11 +542,72 @@ class PlgSystemMinifier extends CMSPlugin
 
         // Check if minified file needs to be updated
         if (!file_exists($minifiedPath) || filemtime($jsPath) > filemtime($minifiedPath)) {
-            $minifier = new Minify\JS($jsPath);
-            $minifier->minify($minifiedPath);
+            if ($this->params->get('js_obfuscate', 0)) {
+                // Read the original file
+                $content = file_get_contents($jsPath);
+                
+                // First minify
+                $minifier = new Minify\JS($content);
+                $minifiedContent = $minifier->minify();
+                
+                // Then obfuscate
+                $obfuscatedContent = $this->obfuscateJs($minifiedContent);
+                
+                // Save the result
+                file_put_contents($minifiedPath, $obfuscatedContent);
+            } else {
+                // Regular minification
+                $minifier = new Minify\JS($jsPath);
+                $minifier->minify($minifiedPath);
+            }
         }
 
-        return dirname($jsFile) . '/' . File::stripExt(basename($jsFile)) . '.min.js';
+        return dirname($jsFile) . '/' . File::stripExt(basename($jsFile)) . $suffix;
+    }
+
+    /**
+     * Obfuscates JavaScript code
+     * @param string $code JavaScript code to obfuscate
+     * @return string Obfuscated JavaScript code
+     */
+    protected function obfuscateJs($code)
+    {
+        // Basic variable name obfuscation
+        $varCounter = 0;
+        $varMap = [];
+        
+        // Replace variable declarations
+        $code = preg_replace_callback(
+            '/\b(var|let|const)\s+([a-zA-Z_]\w*)\b/',
+            function($matches) use (&$varCounter, &$varMap) {
+                $originalName = $matches[2];
+                if (!isset($varMap[$originalName])) {
+                    $varMap[$originalName] = '_' . base_convert($varCounter++, 10, 36);
+                }
+                return $matches[1] . ' ' . $varMap[$originalName];
+            },
+            $code
+        );
+        
+        // Replace variable usage
+        foreach ($varMap as $original => $obfuscated) {
+            $code = preg_replace('/\b' . preg_quote($original, '/') . '\b/', $obfuscated, $code);
+        }
+        
+        // Add simple string encoding
+        $code = preg_replace_callback(
+            '/"([^"\\\\]*(?:\\\\.[^"\\\\]*)*)"|\'([^\'\\\\]*(?:\\\\.[^\'\\\\]*)*)\'/',
+            function($matches) {
+                $str = !empty($matches[1]) ? $matches[1] : $matches[2];
+                return 'String.fromCharCode(' . implode(',', array_map('ord', str_split($str))) . ')';
+            },
+            $code
+        );
+        
+        // Wrap in self-executing function for scope isolation
+        $code = "(function(){" . $code . "})();";
+        
+        return $code;
     }
 
     protected function ensureWritableDirectory($directory)
