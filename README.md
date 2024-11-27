@@ -6,6 +6,7 @@ A Joomla system plugin that automatically minifies CSS and JavaScript files to i
 
 - Automatic CSS minification
 - Automatic JavaScript minification
+- Combines multiple CSS/JS files into single files
 - Exclude specific paths from minification
 - Debug logging support
 - Preserves query parameters in URLs
@@ -42,6 +43,8 @@ The plugin provides several configuration options in the Joomla backend:
 
 - **CSS Minification**: Enable/disable CSS minification
 - **JS Minification**: Enable/disable JavaScript minification
+- **Combine CSS Files**: Enable/disable CSS file combination
+- **Combine JS Files**: Enable/disable JavaScript file combination
 - **Debug Mode**: Enable detailed logging for troubleshooting
 - **Exclude Paths**: List of paths to exclude from minification (one per line)
 
@@ -50,13 +53,16 @@ The plugin provides several configuration options in the Joomla backend:
 1. The plugin intercepts page rendering
 2. Scans for CSS and JavaScript files in the HTML
 3. Creates minified versions of local files (if they don't exist or are outdated)
-4. Updates HTML to reference minified versions
-5. Skips external files and already minified files
+4. Combines multiple files of the same type into single files
+5. Updates HTML to reference minified and combined versions
+6. Skips external files and already minified files
 
 ## File Naming Convention
 
 - Original: `style.css` → Minified: `style.min.css`
 - Original: `script.js` → Minified: `script.min.js`
+- Combined CSS: `combined-{hash}.min.css`
+- Combined JS: `combined-{hash}.min.js`
 
 ## Troubleshooting
 
