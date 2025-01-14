@@ -502,9 +502,40 @@ class PlgSystemMinifier extends CMSPlugin
         }
 
         // Check if minified file needs to be updated
-        if (!file_exists($minifiedPath) || filemtime($cssPath) > filemtime($minifiedPath)) {
-            $minifier = new Minify\CSS($cssPath);
-            $minifier->minify($minifiedPath);
+        $shouldMinify = !file_exists($minifiedPath);
+        if (!$shouldMinify) {
+            $originalTime = filemtime($cssPath);
+            $minifiedTime = filemtime($minifiedPath);
+            $shouldMinify = ($originalTime > $minifiedTime);
+            
+            if ($this->params->get('debug', 0)) {
+                Log::add(
+                    sprintf('CSS timestamps - Original: %s, Minified: %s, Should minify: %s',
+                        date('Y-m-d H:i:s', $originalTime),
+                        date('Y-m-d H:i:s', $minifiedTime),
+                        $shouldMinify ? 'yes' : 'no'
+                    ),
+                    Log::DEBUG,
+                    $this->logCategory
+                );
+            }
+        }
+
+        if ($shouldMinify) {
+            try {
+                $minifier = new Minify\CSS($cssPath);
+                $minifier->minify($minifiedPath);
+                
+                // Ensure the minified file timestamp is set after the original
+                touch($minifiedPath, time());
+                
+                if ($this->params->get('debug', 0)) {
+                    Log::add('CSS file minified: ' . $minifiedPath, Log::INFO, $this->logCategory);
+                }
+            } catch (Exception $e) {
+                Log::add('CSS minification failed: ' . $e->getMessage(), Log::ERROR, $this->logCategory);
+                return false;
+            }
         }
 
         return dirname($cssFile) . '/' . File::stripExt(basename($cssFile)) . '.min.css';
@@ -541,24 +572,55 @@ class PlgSystemMinifier extends CMSPlugin
         }
 
         // Check if minified file needs to be updated
-        if (!file_exists($minifiedPath) || filemtime($jsPath) > filemtime($minifiedPath)) {
-            if ($this->params->get('js_obfuscate', 0)) {
-                // Read the original file
-                $content = file_get_contents($jsPath);
+        $shouldMinify = !file_exists($minifiedPath);
+        if (!$shouldMinify) {
+            $originalTime = filemtime($jsPath);
+            $minifiedTime = filemtime($minifiedPath);
+            $shouldMinify = ($originalTime > $minifiedTime);
+            
+            if ($this->params->get('debug', 0)) {
+                Log::add(
+                    sprintf('JS timestamps - Original: %s, Minified: %s, Should minify: %s',
+                        date('Y-m-d H:i:s', $originalTime),
+                        date('Y-m-d H:i:s', $minifiedTime),
+                        $shouldMinify ? 'yes' : 'no'
+                    ),
+                    Log::DEBUG,
+                    $this->logCategory
+                );
+            }
+        }
+
+        if ($shouldMinify) {
+            try {
+                if ($this->params->get('js_obfuscate', 0)) {
+                    // Read the original file
+                    $content = file_get_contents($jsPath);
+                    
+                    // First minify
+                    $minifier = new Minify\JS($content);
+                    $minifiedContent = $minifier->minify();
+                    
+                    // Then obfuscate
+                    $obfuscatedContent = $this->obfuscateJs($minifiedContent);
+                    
+                    // Save the result
+                    file_put_contents($minifiedPath, $obfuscatedContent);
+                } else {
+                    // Regular minification
+                    $minifier = new Minify\JS($jsPath);
+                    $minifier->minify($minifiedPath);
+                }
                 
-                // First minify
-                $minifier = new Minify\JS($content);
-                $minifiedContent = $minifier->minify();
+                // Ensure the minified file timestamp is set after the original
+                touch($minifiedPath, time());
                 
-                // Then obfuscate
-                $obfuscatedContent = $this->obfuscateJs($minifiedContent);
-                
-                // Save the result
-                file_put_contents($minifiedPath, $obfuscatedContent);
-            } else {
-                // Regular minification
-                $minifier = new Minify\JS($jsPath);
-                $minifier->minify($minifiedPath);
+                if ($this->params->get('debug', 0)) {
+                    Log::add('JS file minified: ' . $minifiedPath, Log::INFO, $this->logCategory);
+                }
+            } catch (Exception $e) {
+                Log::add('JS minification failed: ' . $e->getMessage(), Log::ERROR, $this->logCategory);
+                return false;
             }
         }
 
