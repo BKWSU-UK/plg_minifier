@@ -1,8 +1,14 @@
 {
+    "name": "brahmakumaris/plg-system-minifier",
+    "description": "Joomla System Plugin for CSS and JavaScript Minification",
+    "type": "joomla-plugin",
+    "license": "GPL-2.0-or-later",
     "require": {
-        "matthiasmullie/minify": "^1.3"
+        "php": "^8.3",
+        "matthiasmullie/minify": "^1.3.73"
     },
     "config": {
-        "vendor-dir": "vendor"
+        "vendor-dir": "vendor",
+        "optimize-autoloader": true
     }
 } 

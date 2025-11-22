@@ -7,8 +7,13 @@
     <license>GNU General Public License version 2 or later</license>
     <authorEmail>allan@bkconnect.net</authorEmail>
     <authorUrl>www.brahmakumaris.org</authorUrl>
-    <version>1.0.2</version>
+    <version>1.0.6</version>
     <description>PLG_SYSTEM_MINIFIER_XML_DESCRIPTION</description>
+    
+    <!-- Minimum requirements -->
+    <namespace path="src">BrahmaKumaris\Plugin\System\Minifier</namespace>
+    <minimumPhp>8.3.0</minimumPhp>
+    <minimumJoomla>5.0.0</minimumJoomla>
     
     <files>
         <filename plugin="minifier">minifier.php</filename>
@@ -56,7 +61,6 @@
                     default="0"
                     layout="joomla.form.field.radio.switcher"
                     showon="combine_css:1"
-                    disabled="combine_css:0"
                     >
                     <option value="0">JOFF</option>
                     <option value="1">JON</option>
@@ -91,18 +95,6 @@
                     default="0"
                     layout="joomla.form.field.radio.switcher"
                     showon="combine_js:1"
-                    disabled="combine_js:0"
-                    >
-                    <option value="0">JOFF</option>
-                    <option value="1">JON</option>
-                </field>
-                <field
-                    name="obfuscate_js"
-                    type="radio"
-                    label="PLG_SYSTEM_MINIFIER_FIELD_OBFUSCATE_JS_LABEL"
-                    description="PLG_SYSTEM_MINIFIER_FIELD_OBFUSCATE_JS_DESC"
-                    default="0"
-                    layout="joomla.form.field.radio.switcher"
                     >
                     <option value="0">JOFF</option>
                     <option value="1">JON</option>

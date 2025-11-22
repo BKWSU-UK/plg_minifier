@@ -1,4 +1,12 @@
 <?php
+/**
+ * @package     Joomla.Plugin
+ * @subpackage  System.minifier
+ *
+ * @copyright   (C) 2024 Brahma Kumaris. All rights reserved.
+ * @license     GNU General Public License version 2 or later
+ */
+
 defined('_JEXEC') or die;
 
 use Joomla\CMS\Plugin\CMSPlugin;
@@ -7,10 +15,11 @@ use Joomla\CMS\Filesystem\Folder;
 use MatthiasMullie\Minify;
 use Joomla\CMS\Log\Log;
 use Joomla\CMS\Uri\Uri;
+use Joomla\CMS\Application\CMSApplicationInterface;
 
 class PlgSystemMinifier extends CMSPlugin
 {
-    /** @var JApplicationCms Application object */
+    /** @var CMSApplicationInterface Application object */
     protected $app;
     
     /** @var boolean Auto load language files */
@@ -18,6 +27,15 @@ class PlgSystemMinifier extends CMSPlugin
     
     /** @var string Category for logging */
     protected $logCategory = 'plg_system_minifier';
+    
+    /** @var string CSS cache directory path */
+    private const CSS_CACHE_DIR = '/media/cache/css/';
+    
+    /** @var string JS cache directory path */
+    private const JS_CACHE_DIR = '/media/cache/js/';
+    
+    /** @var int Number of old combined files to keep */
+    private const CACHE_FILES_TO_KEEP = 5;
     
     /**
      * Constructor: Sets up autoloader and logging
@@ -51,8 +69,10 @@ class PlgSystemMinifier extends CMSPlugin
     /**
      * Plugin event triggered after page rendering
      * Handles both CSS and JS minification if enabled
+     * 
+     * @return void
      */
-    public function onAfterRender()
+    public function onAfterRender(): void
     {
         // Check if any minification is enabled
         if (!$this->params->get('enabled', 1) && !$this->params->get('js_enabled', 1)) {
@@ -86,10 +106,11 @@ class PlgSystemMinifier extends CMSPlugin
 
     /**
      * Processes and minifies CSS files found in the page
+     * 
      * @param string $body Page HTML content
      * @return string Modified HTML content
      */
-    protected function processCssFiles($body)
+    protected function processCssFiles(string $body): string
     {
         // Find all CSS files, including those with query parameters
         preg_match_all('/<link[^>]+href=([\'"])(.*?\.css(?:\?[^"\']*)?)\1[^>]*>/i', $body, $matches);
@@ -102,93 +123,122 @@ class PlgSystemMinifier extends CMSPlugin
         $excludePaths = $this->params->get('exclude_paths', '');
         $excludeArray = array_filter(array_map('trim', explode("\n", $excludePaths)));
 
-        // If combine_css is enabled, collect all CSS content
-        if ($this->params->get('combine_css', 0)) {
-            $combinedContent = '';
-            $lastMatch = null;
-            $processedFiles = [];
-            $combineAll = $this->params->get('combine_all_css', 0);
+    // If combine_css is enabled, collect all CSS content
+    if ($this->params->get('combine_css', 0)) {
+        $combinedContent = '';
+        $firstMatchIndex = null;
+        $processedFiles = [];
+        $tagsToRemove = [];
+        $combineAll = $this->params->get('combine_all_css', 0);
 
-            // Process files in the exact order they appear
-            foreach ($matches[2] as $index => $cssFile) {
-                // Save last match for replacement instead of first
-                $lastMatch = $matches[0][$index];
-
-                // Extract query parameters
-                if (strpos($cssFile, '?') !== false) {
-                    list($cleanCssFile, $queryString) = explode('?', $cssFile, 2);
-                } else {
-                    $cleanCssFile = $cssFile;
-                }
-
-                // Skip if file matches excluded paths
-                if ($this->isExcluded($cleanCssFile, $excludeArray)) {
-                    continue;
-                }
-
-                // Skip external files
-                if (strpos($cleanCssFile, '//') === 0 || strpos($cleanCssFile, 'http') === 0) {
-                    continue;
-                }
-
-                $cssPath = $this->resolvePath($cleanCssFile, $rootPath);
-                if (file_exists($cssPath) && !in_array($cssPath, $processedFiles)) {
-                    // For minified files, only add if combine_all_css is enabled
-                    if (strpos($cleanCssFile, '.min.css') !== false && !$combineAll) {
-                        continue;
-                    }
-
-                    if ($this->params->get('debug', 0)) {
-                        $this->app->enqueueMessage(sprintf('Adding file to combination: %s', $cssPath), 'debug');
-                    }
-
-                    // Read the file content directly to maintain order
-                    $fileContent = file_get_contents($cssPath);
-                    
-                    // Minify only if it's not already minified
-                    if (strpos($cleanCssFile, '.min.css') === false) {
-                        $minifier = new Minify\CSS($fileContent);
-                        $fileContent = $minifier->minify();
-                    }
-
-                    $combinedContent .= "/* File: {$cleanCssFile} */\n" . $fileContent . "\n";
-                    $processedFiles[] = $cssPath;
-
-                    // Remove all CSS links as we'll add the combined one at the end
-                    $body = str_replace($matches[0][$index], '', $body);
-                }
+        // Process files in the exact order they appear
+        foreach ($matches[2] as $index => $cssFile) {
+            // Extract query parameters
+            if (strpos($cssFile, '?') !== false) {
+                list($cleanCssFile, $queryString) = explode('?', $cssFile, 2);
+            } else {
+                $cleanCssFile = $cssFile;
             }
 
-            if ($combinedContent && $lastMatch) {
+            // Skip if file matches excluded paths
+            if ($this->isExcluded($cleanCssFile, $excludeArray)) {
+                continue;
+            }
+
+            // Skip external files
+            if (strpos($cleanCssFile, '//') === 0 || strpos($cleanCssFile, 'http') === 0) {
+                continue;
+            }
+
+            $cssPath = $this->resolvePath($cleanCssFile, $rootPath);
+            if ($cssPath === false) {
+                continue;
+            }
+            if (file_exists($cssPath) && !in_array($cssPath, $processedFiles)) {
+                // For minified files, only add if combine_all_css is enabled
+                if (strpos($cleanCssFile, '.min.css') !== false && !$combineAll) {
+                    continue;
+                }
+
+                if ($this->params->get('debug', 0)) {
+                    $this->app->enqueueMessage(sprintf('Adding file to combination: %s', $cssPath), 'debug');
+                }
+
+                // Track the first file we're combining for insertion point
+                if ($firstMatchIndex === null) {
+                    $firstMatchIndex = $index;
+                }
+
+                // Read the file content directly to maintain order
+                $fileContent = file_get_contents($cssPath);
+                
+                // Minify only if it's not already minified
+                if (strpos($cleanCssFile, '.min.css') === false) {
+                    $minifier = new Minify\CSS($fileContent);
+                    $fileContent = $minifier->minify();
+                }
+
+                $combinedContent .= "/* File: {$cleanCssFile} */\n" . $fileContent . "\n";
+                $processedFiles[] = $cssPath;
+
+                // Mark this tag for removal
+                $tagsToRemove[] = $index;
+            }
+        }
+
+        if ($combinedContent && $firstMatchIndex !== null) {
+            try {
                 // Generate hash for the combined content
                 $hash = substr(md5($combinedContent), 0, 8);
                 
                 // Create the combined file
                 $combinedFilename = "combined-{$hash}.css";
-                $combinedPath = JPATH_ROOT . '/media/cache/css/' . $combinedFilename;
+                $combinedPath = JPATH_ROOT . self::CSS_CACHE_DIR . $combinedFilename;
                 
                 // Ensure directory exists
                 $cacheDir = dirname($combinedPath);
                 if (!is_dir($cacheDir)) {
-                    mkdir($cacheDir, 0755, true);
+                    if (!mkdir($cacheDir, 0755, true) && !is_dir($cacheDir)) {
+                        throw new \RuntimeException('Failed to create cache directory: ' . $cacheDir);
+                    }
                 }
 
                 // Save the combined file
-                file_put_contents($combinedPath, $combinedContent);
+                if (file_put_contents($combinedPath, $combinedContent) === false) {
+                    throw new \RuntimeException('Failed to write combined CSS file: ' . $combinedPath);
+                }
 
                 if ($this->params->get('debug', 0)) {
-                    $this->app->enqueueMessage(
+                    Log::add(
                         sprintf('Created combined CSS file: %s', $combinedFilename),
-                        'debug'
+                        Log::INFO,
+                        $this->logCategory
                     );
                 }
 
-                // Add the combined file link at the end of </head>
-                $combinedUrl = Uri::root(true) . '/media/cache/css/' . $combinedFilename;
-                $replacement = '<link href="' . $combinedUrl . '" rel="stylesheet">';
-                $body = str_replace('</head>', $replacement . "\n</head>", $body);
+                // Replace the first CSS file with the combined one
+                $combinedUrl = Uri::root(true) . self::CSS_CACHE_DIR . $combinedFilename;
+                $combinedTag = '<link href="' . $combinedUrl . '" rel="stylesheet">';
+                $body = str_replace($matches[0][$firstMatchIndex], $combinedTag, $body);
+                
+                // Remove all other CSS tags that were combined (skip the first one as we already replaced it)
+                foreach ($tagsToRemove as $index) {
+                    if ($index !== $firstMatchIndex) {
+                        $body = str_replace($matches[0][$index], '', $body);
+                    }
+                }
+                
+                // Clean up old combined files
+                $this->cleanupCombinedFiles($cacheDir, 'combined-', '.css', self::CACHE_FILES_TO_KEEP);
+            } catch (\Exception $e) {
+                Log::add(
+                    'Failed to create combined CSS file: ' . $e->getMessage(),
+                    Log::ERROR,
+                    $this->logCategory
+                );
             }
         }
+    }
         // Add this else block to handle individual CSS minification when combine is disabled
         else {
             // Process individual files
@@ -233,10 +283,11 @@ class PlgSystemMinifier extends CMSPlugin
 
     /**
      * Processes and minifies JavaScript files found in the page
+     * 
      * @param string $body Page HTML content
      * @return string Modified HTML content
      */
-    protected function processJsFiles($body)
+    protected function processJsFiles(string $body): string
     {
         // If JS minification is disabled, return body unchanged
         if (!$this->params->get('js_enabled', 1)) {
@@ -257,17 +308,14 @@ class PlgSystemMinifier extends CMSPlugin
         // If combine_js is enabled, collect all JS content
         if ($this->params->get('combine_js', 0)) {
             $combinedContent = '';
-            $firstMatch = null;
+            $insertAfterIndex = -1; // Track where to insert the combined file
             $processedFiles = [];
+            $skippedTags = []; // Track tags we skip but don't want to remove
             $combineAll = $this->params->get('combine_all_js', 0);
+            $tagsToRemove = [];
 
             // Process files in the exact order they appear
             foreach ($matches[2] as $index => $jsFile) {
-                // Save first match for replacement
-                if ($firstMatch === null) {
-                    $firstMatch = $matches[0][$index];
-                }
-
                 // Extract query parameters
                 if (strpos($jsFile, '?') !== false) {
                     list($cleanJsFile, $queryString) = explode('?', $jsFile, 2);
@@ -277,23 +325,58 @@ class PlgSystemMinifier extends CMSPlugin
 
                 // Skip if file matches excluded paths
                 if ($this->isExcluded($cleanJsFile, $excludeArray)) {
+                    // Track that we're keeping this tag
+                    $skippedTags[] = $index;
+                    // Insert combined file after the last skipped tag
+                    if ($insertAfterIndex < $index) {
+                        $insertAfterIndex = $index;
+                    }
                     continue;
                 }
 
                 // Skip external files
                 if (strpos($cleanJsFile, '//') === 0 || strpos($cleanJsFile, 'http') === 0) {
+                    $skippedTags[] = $index;
+                    if ($insertAfterIndex < $index) {
+                        $insertAfterIndex = $index;
+                    }
                     continue;
                 }
 
                 $jsPath = $this->resolvePath($cleanJsFile, $rootPath);
+                if ($jsPath === false) {
+                    $skippedTags[] = $index;
+                    if ($insertAfterIndex < $index) {
+                        $insertAfterIndex = $index;
+                    }
+                    continue;
+                }
+                
                 if (file_exists($jsPath) && !in_array($jsPath, $processedFiles)) {
                     // For minified files, only add if combine_all_js is enabled
                     if (strpos($cleanJsFile, '.min.js') !== false && !$combineAll) {
+                        // Keep pre-minified files in their original position
+                        $skippedTags[] = $index;
+                        // Insert combined file after this pre-minified file
+                        if ($insertAfterIndex < $index) {
+                            $insertAfterIndex = $index;
+                        }
+                        if ($this->params->get('debug', 0)) {
+                            Log::add(
+                                sprintf('Skipping pre-minified file (not combining): %s', $cleanJsFile),
+                                Log::DEBUG,
+                                $this->logCategory
+                            );
+                        }
                         continue;
                     }
 
                     if ($this->params->get('debug', 0)) {
-                        $this->app->enqueueMessage(sprintf('Adding JS file to combination: %s', $jsPath), 'debug');
+                        Log::add(
+                            sprintf('Adding JS file to combination: %s', $jsPath),
+                            Log::DEBUG,
+                            $this->logCategory
+                        );
                     }
 
                     // Read the file content directly to maintain order
@@ -307,47 +390,75 @@ class PlgSystemMinifier extends CMSPlugin
 
                     $combinedContent .= "/* File: {$cleanJsFile} */\n" . $fileContent . "\n";
                     $processedFiles[] = $jsPath;
-
-                    // Remove this JS script tag from body except for the first one
-                    if ($firstMatch !== $matches[0][$index]) {
-                        // Replace entire script tag instead of just the matched pattern
-                        $scriptPattern = preg_quote($matches[0][$index], '/') . '(?:\s*<\/script>)?';
-                        $body = preg_replace('/' . $scriptPattern . '/', '', $body);
-                    }
+                    
+                    // Mark this tag for removal
+                    $tagsToRemove[] = $index;
                 }
             }
 
-            if ($combinedContent && $firstMatch) {
-                // Generate hash for the combined content
-                $hash = substr(md5($combinedContent), 0, 8);
-                
-                // Create the combined file
-                $combinedFilename = "combined-{$hash}.js";
-                $combinedPath = JPATH_ROOT . '/media/cache/js/' . $combinedFilename;
-                
-                // Ensure directory exists
-                $cacheDir = dirname($combinedPath);
-                if (!is_dir($cacheDir)) {
-                    mkdir($cacheDir, 0755, true);
-                }
+            if ($combinedContent) {
+                try {
+                    // Generate hash for the combined content
+                    $hash = substr(md5($combinedContent), 0, 8);
+                    
+                    // Create the combined file
+                    $combinedFilename = "combined-{$hash}.js";
+                    $combinedPath = JPATH_ROOT . self::JS_CACHE_DIR . $combinedFilename;
+                    
+                    // Ensure directory exists
+                    $cacheDir = dirname($combinedPath);
+                    if (!is_dir($cacheDir)) {
+                        if (!mkdir($cacheDir, 0755, true) && !is_dir($cacheDir)) {
+                            throw new \RuntimeException('Failed to create cache directory: ' . $cacheDir);
+                        }
+                    }
 
-                // Save the combined file
-                file_put_contents($combinedPath, $combinedContent);
+                    // Save the combined file
+                    if (file_put_contents($combinedPath, $combinedContent) === false) {
+                        throw new \RuntimeException('Failed to write combined JS file: ' . $combinedPath);
+                    }
 
-                if ($this->params->get('debug', 0)) {
-                    $this->app->enqueueMessage(
-                        sprintf('Created combined JS file: %s', $combinedFilename),
-                        'debug'
+                    if ($this->params->get('debug', 0)) {
+                        Log::add(
+                            sprintf('Created combined JS file: %s (will insert after index %d)', $combinedFilename, $insertAfterIndex),
+                            Log::INFO,
+                            $this->logCategory
+                        );
+                    }
+
+                    $combinedUrl = Uri::root(true) . self::JS_CACHE_DIR . $combinedFilename;
+                    $combinedTag = '<script src="' . $combinedUrl . '"></script>';
+                    
+                    // If we have a position to insert after, insert there
+                    // Otherwise, insert at the position of the first combined file
+                    if ($insertAfterIndex >= 0 && isset($matches[0][$insertAfterIndex])) {
+                        // Insert after the last skipped tag
+                        $insertAfterPattern = preg_quote($matches[0][$insertAfterIndex], '/') . '(?:\s*<\/script>)?';
+                        $body = preg_replace('/' . $insertAfterPattern . '/', '$0' . "\n" . $combinedTag, $body, 1);
+                    } elseif (!empty($tagsToRemove)) {
+                        // Insert at the position of the first combined file
+                        $firstCombinedIndex = $tagsToRemove[0];
+                        $firstMatchPattern = preg_quote($matches[0][$firstCombinedIndex], '/') . '(?:\s*<\/script>)?';
+                        $body = preg_replace('/' . $firstMatchPattern . '/', $combinedTag, $body, 1);
+                        // Remove the first index from tagsToRemove since we already handled it
+                        array_shift($tagsToRemove);
+                    }
+                    
+                    // Remove all other tags that were combined
+                    foreach ($tagsToRemove as $index) {
+                        $scriptPattern = preg_quote($matches[0][$index], '/') . '(?:\s*<\/script>)?';
+                        $body = preg_replace('/' . $scriptPattern . '/', '', $body);
+                    }
+                    
+                    // Clean up old combined files
+                    $this->cleanupCombinedFiles($cacheDir, 'combined-', '.js', self::CACHE_FILES_TO_KEEP);
+                } catch (\Exception $e) {
+                    Log::add(
+                        'Failed to create combined JS file: ' . $e->getMessage(),
+                        Log::ERROR,
+                        $this->logCategory
                     );
                 }
-
-                // Replace the first JS script tag with the combined file
-                $combinedUrl = Uri::root(true) . '/media/cache/js/' . $combinedFilename;
-                $replacement = '<script src="' . $combinedUrl . '"></script>';
-                
-                // Create pattern to match the entire script tag including its closing tag
-                $firstMatchPattern = preg_quote($firstMatch, '/') . '(?:\s*<\/script>)?';
-                $body = preg_replace('/' . $firstMatchPattern . '/', $replacement, $body, 1);
             }
 
             return $body;
@@ -397,8 +508,11 @@ class PlgSystemMinifier extends CMSPlugin
 
     /**
      * Determines if a CSS file should be skipped (external or already minified)
+     * 
+     * @param string $cssFile The CSS file path
+     * @return bool True if file should be skipped, false otherwise
      */
-    protected function shouldSkipCssFile($cssFile)
+    protected function shouldSkipCssFile(string $cssFile): bool
     {
         // If combine_all_css is enabled, don't skip any local files
         if ($this->params->get('combine_all_css', 0)) {
@@ -413,56 +527,91 @@ class PlgSystemMinifier extends CMSPlugin
 
     /**
      * Resolves file paths considering various Joomla locations
+     * 
      * @param string $file Original file path
      * @param string $rootPath Joomla root path
-     * @return string Resolved absolute file path
+     * @return string|false Resolved absolute file path or false on security violation
      */
-    protected function resolvePath($file, $rootPath)
+    protected function resolvePath(string $file, string $rootPath)
     {
         // Handle absolute paths starting with /
         if (strpos($file, '/') === 0) {
-            return $rootPath . $file;
+            $resolved = $rootPath . $file;
         }
-        
         // Check if file is from a module (contains /modules/)
-        if (strpos($file, '/modules/') !== false) {
+        elseif (strpos($file, '/modules/') !== false) {
             // Extract the path after /modules/
             $modulePath = substr($file, strpos($file, '/modules/'));
-            return $rootPath . $modulePath;
+            $resolved = $rootPath . $modulePath;
         }
-        
         // Check if file is from media folder
-        if (strpos($file, '/media/') !== false) {
+        elseif (strpos($file, '/media/') !== false) {
             // Extract the path after /media/
             $mediaPath = substr($file, strpos($file, '/media/'));
-            return $rootPath . $mediaPath;
+            $resolved = $rootPath . $mediaPath;
+        }
+        // Default case for relative paths
+        else {
+            $resolved = $rootPath . '/' . $file;
         }
         
-        // Default case for relative paths
-        return $rootPath . '/' . $file;
+        // Security: Verify the resolved path is within JPATH_ROOT
+        $realPath = realpath($resolved);
+        $realRoot = realpath($rootPath);
+        
+        // If realpath fails, the file doesn't exist yet, so check the directory
+        if ($realPath === false) {
+            $dirPath = dirname($resolved);
+            $realPath = realpath($dirPath);
+            if ($realPath !== false) {
+                $realPath = $realPath . '/' . basename($resolved);
+            }
+        }
+        
+        // Ensure the path is within the root directory
+        if ($realPath !== false && $realRoot !== false) {
+            if (strpos($realPath, $realRoot) !== 0) {
+                Log::add(
+                    sprintf('Security: Path traversal attempt detected: %s resolves outside root', $file),
+                    Log::WARNING,
+                    $this->logCategory
+                );
+                return false;
+            }
+        }
+        
+        return $resolved;
     }
 
-    protected function shouldSkipJsFile($jsFile)
+    /**
+     * Determines if a JavaScript file should be skipped (external or already minified)
+     * 
+     * @param string $jsFile The JavaScript file path
+     * @return bool True if file should be skipped, false otherwise
+     */
+    protected function shouldSkipJsFile(string $jsFile): bool
     {
         // Skip external files
         if (strpos($jsFile, '//') === 0 || strpos($jsFile, 'http') === 0) {
             return true;
         }
 
-        // If JS minification is disabled, skip minified files to use original versions
-        if (!$this->params->get('js_enabled', 1) && strpos($jsFile, '.min.js') !== false) {
-            return true;
-        }
-
-        // If JS minification is enabled, skip already minified files
-        if ($this->params->get('js_enabled', 1) && strpos($jsFile, '.min.js') !== false) {
+        // Skip already minified files
+        if (strpos($jsFile, '.min.js') !== false) {
             return true;
         }
 
         return false;
     }
 
-    protected function isExcluded($cssFile, $excludeArray)
+    /**
+     * Check if a file path is in the exclusion list
+     * 
+     * @param string $cssFile File path to check
+     * @param array $excludeArray Array of paths to exclude
+     * @return bool True if excluded, false otherwise
+     */
+    protected function isExcluded(string $cssFile, array $excludeArray): bool
     {
         foreach ($excludeArray as $excludePath) {
             if (!empty($excludePath) && strpos($cssFile, $excludePath) !== false) {
@@ -472,10 +621,22 @@ class PlgSystemMinifier extends CMSPlugin
         return false;
     }
 
-    protected function minifyCssFile($cssFile, $rootPath)
+    /**
+     * Minifies a CSS file
+     * 
+     * @param string $cssFile Original CSS file path
+     * @param string $rootPath Joomla root path
+     * @return string|false Minified file URL or false on failure
+     */
+    protected function minifyCssFile(string $cssFile, string $rootPath)
     {
         // Handle relative and absolute paths
         $cssPath = $this->resolvePath($cssFile, $rootPath);
+        
+        // Security check
+        if ($cssPath === false) {
+            return false;
+        }
         
         // Debug logging
         if ($this->params->get('debug', 0)) {
@@ -541,10 +702,22 @@ class PlgSystemMinifier extends CMSPlugin
         return dirname($cssFile) . '/' . File::stripExt(basename($cssFile)) . '.min.css';
     }
 
-    protected function minifyJsFile($jsFile, $rootPath)
+    /**
+     * Minifies a JavaScript file
+     * 
+     * @param string $jsFile Original JavaScript file path
+     * @param string $rootPath Joomla root path
+     * @return string|false Minified file URL or false on failure
+     */
+    protected function minifyJsFile(string $jsFile, string $rootPath)
     {
         // Handle relative and absolute paths
         $jsPath = $this->resolvePath($jsFile, $rootPath);
+        
+        // Security check
+        if ($jsPath === false) {
+            return false;
+        }
         
         // Debug logging
         if ($this->params->get('debug', 0)) {
@@ -562,9 +735,8 @@ class PlgSystemMinifier extends CMSPlugin
             return false;
         }
 
-        // Create minified filename with optional obfuscation indicator
-        $suffix = $this->params->get('js_obfuscate', 0) ? '.obf.min.js' : '.min.js';
-        $minifiedPath = dirname($jsPath) . '/' . File::stripExt(basename($jsPath)) . $suffix;
+        // Create minified filename
+        $minifiedPath = dirname($jsPath) . '/' . File::stripExt(basename($jsPath)) . '.min.js';
         
         // Ensure target directory exists and is writable
         if (!$this->ensureWritableDirectory(dirname($minifiedPath))) {
@@ -593,24 +765,9 @@ class PlgSystemMinifier extends CMSPlugin
 
         if ($shouldMinify) {
             try {
-                if ($this->params->get('js_obfuscate', 0)) {
-                    // Read the original file
-                    $content = file_get_contents($jsPath);
-                    
-                    // First minify
-                    $minifier = new Minify\JS($content);
-                    $minifiedContent = $minifier->minify();
-                    
-                    // Then obfuscate
-                    $obfuscatedContent = $this->obfuscateJs($minifiedContent);
-                    
-                    // Save the result
-                    file_put_contents($minifiedPath, $obfuscatedContent);
-                } else {
-                    // Regular minification
-                    $minifier = new Minify\JS($jsPath);
-                    $minifier->minify($minifiedPath);
-                }
+                // Regular minification
+                $minifier = new Minify\JS($jsPath);
+                $minifier->minify($minifiedPath);
                 
                 // Ensure the minified file timestamp is set after the original
                 touch($minifiedPath, time());
@@ -624,55 +781,16 @@ class PlgSystemMinifier extends CMSPlugin
             }
         }
 
-        return dirname($jsFile) . '/' . File::stripExt(basename($jsFile)) . $suffix;
+        return dirname($jsFile) . '/' . File::stripExt(basename($jsFile)) . '.min.js';
     }
 
     /**
-     * Obfuscates JavaScript code
-     * @param string $code JavaScript code to obfuscate
-     * @return string Obfuscated JavaScript code
+     * Ensures a directory exists and is writable
+     * 
+     * @param string $directory Directory path to check/create
+     * @return bool True if directory is writable, false otherwise
      */
-    protected function obfuscateJs($code)
-    {
-        // Basic variable name obfuscation
-        $varCounter = 0;
-        $varMap = [];
-        
-        // Replace variable declarations
-        $code = preg_replace_callback(
-            '/\b(var|let|const)\s+([a-zA-Z_]\w*)\b/',
-            function($matches) use (&$varCounter, &$varMap) {
-                $originalName = $matches[2];
-                if (!isset($varMap[$originalName])) {
-                    $varMap[$originalName] = '_' . base_convert($varCounter++, 10, 36);
-                }
-                return $matches[1] . ' ' . $varMap[$originalName];
-            },
-            $code
-        );
-        
-        // Replace variable usage
-        foreach ($varMap as $original => $obfuscated) {
-            $code = preg_replace('/\b' . preg_quote($original, '/') . '\b/', $obfuscated, $code);
-        }
-        
-        // Add simple string encoding
-        $code = preg_replace_callback(
-            '/"([^"\\\\]*(?:\\\\.[^"\\\\]*)*)"|\'([^\'\\\\]*(?:\\\\.[^\'\\\\]*)*)\'/',
-            function($matches) {
-                $str = !empty($matches[1]) ? $matches[1] : $matches[2];
-                return 'String.fromCharCode(' . implode(',', array_map('ord', str_split($str))) . ')';
-            },
-            $code
-        );
-        
-        // Wrap in self-executing function for scope isolation
-        $code = "(function(){" . $code . "})();";
-        
-        return $code;
-    }
-
-    protected function ensureWritableDirectory($directory)
+    protected function ensureWritableDirectory(string $directory): bool
     {
         if (!Folder::exists($directory)) {
             try {
@@ -693,12 +811,14 @@ class PlgSystemMinifier extends CMSPlugin
 
     /**
      * Cleans up old combined files, keeping only the most recent ones
+     * 
      * @param string $directory Directory to clean
      * @param string $prefix File prefix to match
      * @param string $suffix File suffix to match
      * @param int $keep Number of files to keep
+     * @return void
      */
-    protected function cleanupCombinedFiles($directory, $prefix, $suffix, $keep = 5)
+    protected function cleanupCombinedFiles(string $directory, string $prefix, string $suffix, int $keep = 5): void
     {
         if (!is_dir($directory)) {
             return;

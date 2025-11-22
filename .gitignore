@@ -1,2 +1,28 @@
-*.zip
+# Vendor directory
 vendor/
+
+# Build files
+*.zip
+build/
+dist/
+
+# IDE and editor files
+.cursor/
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Composer lock (uncomment if you want to track it)
+# composer.lock
+
+# Log files
+*.log
+
+# Cache
+cache/
