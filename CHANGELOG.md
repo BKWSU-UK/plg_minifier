@@ -9,15 +9,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - **Critical**: Fixed CSS cascade order issue when "Combine CSS Files" is enabled
+- **Critical**: Fixed Bootstrap icons and other assets not displaying when CSS files are combined
 - Combined CSS file now replaces the first combined CSS file instead of being inserted at the end of `</head>`
 - This preserves the original CSS cascade order and prevents styles from being overridden incorrectly
+- Relative URLs in CSS (fonts, icons, images) are now converted to absolute paths when combining files
+
+### Added
+- New `convertCssUrls()` method to properly convert relative URLs in CSS to absolute paths
+- Proper handling of CSS url() references including fonts, icons, and background images
 
 ### Changed
 - CSS combination logic now tracks the first combined file position and uses it as the insertion point
 - Improved handling of CSS file removal to prevent disrupting the document structure
+- CSS files are now processed using `addFile()` method for proper minification with path context
 
 ### Technical Details
-When combining CSS files, the plugin now maintains the original CSS cascade order by inserting the combined file at the position of the first CSS file that was combined, rather than at the end of the `</head>` tag. This ensures that CSS specificity and cascade rules work as expected.
+When combining CSS files, the plugin now:
+1. Maintains the original CSS cascade order by inserting the combined file at the position of the first CSS file that was combined
+2. Converts all relative URLs (fonts, icons, images) to absolute paths so they continue to work from the new combined file location
+3. Uses the matthiasmullie/minify library's `addFile()` method to ensure proper path handling during minification
+
+This ensures that CSS specificity and cascade rules work as expected, and that all CSS assets (Bootstrap icons, fonts, etc.) load correctly.
 
 ## [1.0.5] - 2024-11-22
 

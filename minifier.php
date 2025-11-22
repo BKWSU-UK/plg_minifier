@@ -169,14 +169,18 @@ class PlgSystemMinifier extends CMSPlugin
                     $firstMatchIndex = $index;
                 }
 
-                // Read the file content directly to maintain order
-                $fileContent = file_get_contents($cssPath);
+                // Use the minifier with file path to properly handle URL conversions
+                $minifier = new Minify\CSS();
+                $minifier->addFile($cssPath);
                 
-                // Minify only if it's not already minified
-                if (strpos($cleanCssFile, '.min.css') === false) {
-                    $minifier = new Minify\CSS($fileContent);
-                    $fileContent = $minifier->minify();
-                }
+                // Get the target path for the combined file to calculate relative paths
+                $targetPath = JPATH_ROOT . self::CSS_CACHE_DIR . 'combined.css';
+                
+                // Set up the converter to handle relative paths from original location to combined location
+                $fileContent = $minifier->minify();
+                
+                // Convert relative URLs to absolute paths
+                $fileContent = $this->convertCssUrls($fileContent, $cssPath, $targetPath);
 
                 $combinedContent .= "/* File: {$cleanCssFile} */\n" . $fileContent . "\n";
                 $processedFiles[] = $cssPath;
@@ -842,5 +846,54 @@ class PlgSystemMinifier extends CMSPlugin
                 Log::add('Failed to delete old combined file: ' . $file, Log::WARNING, $this->logCategory);
             }
         }
+    }
+
+    /**
+     * Converts relative URLs in CSS to absolute URLs
+     * 
+     * @param string $cssContent CSS content
+     * @param string $sourcePath Original CSS file path
+     * @param string $targetPath Target combined CSS file path
+     * @return string CSS content with converted URLs
+     */
+    protected function convertCssUrls(string $cssContent, string $sourcePath, string $targetPath): string
+    {
+        $sourceDir = dirname($sourcePath);
+        $targetDir = dirname($targetPath);
+        $rootPath = str_replace('\\', '/', JPATH_ROOT);
+        
+        // Find all url() references in the CSS
+        $pattern = '/url\s*\(\s*[\'"]?([^\'"\)]+)[\'"]?\s*\)/i';
+        
+        return preg_replace_callback($pattern, function($matches) use ($sourceDir, $targetDir, $rootPath) {
+            $url = trim($matches[1], '\'" ');
+            
+            // Skip absolute URLs, data URIs, and URLs starting with //
+            if (strpos($url, 'http') === 0 || 
+                strpos($url, '//') === 0 || 
+                strpos($url, 'data:') === 0 ||
+                strpos($url, '#') === 0) {
+                return $matches[0];
+            }
+            
+            // Convert relative URL to absolute file path
+            $absolutePath = realpath($sourceDir . '/' . $url);
+            
+            if ($absolutePath === false) {
+                // If realpath fails, try without it
+                $absolutePath = $sourceDir . '/' . $url;
+            }
+            
+            // Convert to web path relative to root
+            $absolutePath = str_replace('\\', '/', $absolutePath);
+            $webPath = str_replace($rootPath, '', $absolutePath);
+            
+            // Ensure it starts with /
+            if (strpos($webPath, '/') !== 0) {
+                $webPath = '/' . $webPath;
+            }
+            
+            return 'url(' . $webPath . ')';
+        }, $cssContent);
     }
 } 
