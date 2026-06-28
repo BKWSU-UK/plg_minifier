@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.19] - 2025-06-28
+
+### Fixed
+- Combined CSS now strips UTF-8 BOM markers from bundled files, preventing mid-file BOM bytes (left after Google Fonts `@import` extraction from `template.min.css`) from breaking template rule parsing in browsers
+
+## [1.0.18] - 2025-06-28
+
+### Fixed
+- External `@import` rules (such as Google Fonts) are now emitted as `<link rel="stylesheet">` tags instead of being kept inside combined CSS, which browsers load more reliably than `@import` inside bundled stylesheets
+- Combined CSS now removes duplicate `@charset` rules from bundled files instead of leaving invalid mid-file declarations
+
+## [1.0.17] - 2025-06-28
+
+### Fixed
+- Combined CSS `@import` hoisting now parses quoted URLs correctly when the URL itself contains semicolons (such as Google Fonts `family=` parameters), preventing corrupted combined stylesheets
+
+## [1.0.16] - 2025-06-28
+
+### Fixed
+- Combined CSS now hoists `@charset` and `@import` rules to the top of the bundle, so browser `@import` rules (such as Google Fonts loaded from `template.min.css`) remain valid after CSS combination
+
 ## [1.0.15] - 2025-06-28
 
 ### Fixed

@@ -962,7 +962,7 @@ class PlgSystemMinifier extends CMSPlugin
             }
 
             return MinifierCssAssetPaths::relocatePaths(
-                $fileContent,
+                MinifierCssAssetPaths::stripUtf8Bom($fileContent),
                 $cssPath,
                 $targetPath,
                 JPATH_ROOT,
@@ -985,7 +985,10 @@ class PlgSystemMinifier extends CMSPlugin
      */
     protected function prepareCombinedCssBlock(array $linkMatches, array $block, string $targetPath): ?array
     {
-        $combinedContent = $this->buildCssBlockContent($block['files'], $targetPath);
+        $prepared = MinifierCssAssetPaths::prepareCombinedCss(
+            $this->buildCssBlockContent($block['files'], $targetPath)
+        );
+        $combinedContent = $prepared['css'];
         $tagsToRemove = $block['indices'];
         $firstMatchIndex = $tagsToRemove[0];
 
@@ -994,7 +997,7 @@ class PlgSystemMinifier extends CMSPlugin
         }
 
         try {
-            $hash = substr(md5($combinedContent), 0, 8);
+            $hash = substr(md5($combinedContent . implode('', $prepared['externalImports'])), 0, 8);
             $combinedFilename = "combined-{$hash}.css";
             $combinedPath = JPATH_ROOT . self::CSS_CACHE_DIR . $combinedFilename;
             $cacheDir = dirname($combinedPath);
@@ -1018,7 +1021,13 @@ class PlgSystemMinifier extends CMSPlugin
             }
 
             $combinedUrl = Uri::root(true) . self::CSS_CACHE_DIR . $combinedFilename;
-            $combinedTag = '<link href="' . $combinedUrl . '" rel="stylesheet">';
+            $combinedTag = '';
+
+            foreach ($prepared['externalImports'] as $importUrl) {
+                $combinedTag .= '<link href="' . htmlspecialchars($importUrl, ENT_QUOTES, 'UTF-8') . '" rel="stylesheet">';
+            }
+
+            $combinedTag .= '<link href="' . $combinedUrl . '" rel="stylesheet">';
             $replacements = [];
 
             foreach ($tagsToRemove as $index) {

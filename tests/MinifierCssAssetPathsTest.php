@@ -118,4 +118,96 @@ class MinifierCssAssetPathsTest extends TestCase
             $result
         );
     }
+
+    public function testHoistAtRulesMovesImportRulesToTop(): void
+    {
+        $css = "body { color: red; }\n"
+            . '@import "/media/fonts/local.css";'
+            . ':root { --font: Fraunces; }';
+
+        $result = MinifierCssAssetPaths::hoistAtRules($css);
+
+        $this->assertStringStartsWith('@import "/media/fonts/local.css";', $result);
+        $this->assertStringContainsString("body { color: red; }", $result);
+        $this->assertStringContainsString(':root { --font: Fraunces; }', $result);
+    }
+
+    public function testPrepareCombinedCssExtractsExternalImports(): void
+    {
+        $css = 'body { color: red; } '
+            . '@import"https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..600;1,9..144,400..500&display=swap";'
+            . ':root { --font: Fraunces; }';
+
+        $result = MinifierCssAssetPaths::prepareCombinedCss($css);
+
+        $this->assertSame(
+            [
+                'https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..600;1,9..144,400..500&display=swap',
+            ],
+            $result['externalImports']
+        );
+        $this->assertStringNotContainsString('@import', $result['css']);
+        $this->assertStringContainsString('body { color: red; }', $result['css']);
+        $this->assertStringContainsString(':root { --font: Fraunces; }', $result['css']);
+    }
+
+    public function testPrepareCombinedCssStripsDuplicateCharsetRules(): void
+    {
+        $css = '@charset "UTF-8"; body { color: red; } @charset "UTF-8"; .alert { color: blue; }';
+
+        $result = MinifierCssAssetPaths::prepareCombinedCss($css);
+
+        $this->assertStringStartsWith('@charset "UTF-8";' . "\n", $result['css']);
+        $this->assertSame(1, substr_count($result['css'], '@charset'));
+    }
+
+    public function testPrepareCombinedCssRemovesMidFileBomAfterImportExtraction(): void
+    {
+        $css = "/* bootstrap */\n:root{}\n/* template */\n\xEF\xBB\xBF"
+            . '@import"https://fonts.googleapis.com/css2?family=Test&display=swap";'
+            . ':root{--x:1}';
+
+        $result = MinifierCssAssetPaths::prepareCombinedCss($css);
+
+        $this->assertSame(['https://fonts.googleapis.com/css2?family=Test&display=swap'], $result['externalImports']);
+        $this->assertSame(0, substr_count($result['css'], "\xEF\xBB\xBF"));
+        $this->assertStringContainsString(':root{--x:1}', $result['css']);
+    }
+
+    public function testStripUtf8BomRemovesLeadingByteOrderMark(): void
+    {
+        $this->assertSame('@import"x";', MinifierCssAssetPaths::stripUtf8Bom("\xEF\xBB\xBF@import\"x\";"));
+    }
+
+    public function testHoistAtRulesPlacesCharsetBeforeImports(): void
+    {
+        $css = '.rule { color: blue; } @charset "utf-8"; @import "/fonts.css";';
+
+        $result = MinifierCssAssetPaths::hoistAtRules($css);
+
+        $this->assertStringStartsWith('@charset "utf-8";' . "\n" . '@import "/fonts.css";' . "\n", $result);
+        $this->assertStringContainsString('.rule { color: blue; }', $result);
+        $this->assertStringNotContainsString('@charset "utf-8"; @import', $result);
+    }
+
+    public function testHoistAtRulesDeduplicatesIdenticalImports(): void
+    {
+        $css = '@import "/fonts.css"; body { color: red; } @import "/fonts.css";';
+
+        $result = MinifierCssAssetPaths::hoistAtRules($css);
+
+        $this->assertSame(1, substr_count($result, '@import "/fonts.css";'));
+    }
+
+    public function testHoistAtRulesHandlesSemicolonsInsideQuotedImportUrls(): void
+    {
+        $css = 'body { color: red; } '
+            . '@import "/media/fonts/local.css";'
+            . ':root { --font: Fraunces; }';
+
+        $result = MinifierCssAssetPaths::hoistAtRules($css);
+
+        $this->assertStringStartsWith('@import "/media/fonts/local.css";', $result);
+        $this->assertStringContainsString(':root { --font: Fraunces; }', $result);
+    }
 }
