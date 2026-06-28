@@ -1,4 +1,4 @@
-# Vendor directory
+# Vendor directory (production dependencies are bundled in release zips only)
 vendor/
 
 # Build files
@@ -26,3 +26,4 @@ Thumbs.db
 
 # Cache
 cache/
+.phpunit.cache/

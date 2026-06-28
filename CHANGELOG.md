@@ -5,6 +5,82 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.12] - 2025-06-28
+
+### Added
+- Joomla automatic update support via GitHub-hosted update server manifest and GitHub release packages
+- Build script now generates `updates/plg_system_minifier.xml` with package checksums for update verification
+- GitHub Actions release workflow that builds, publishes release assets, and updates the manifest on `main` when a `v*` tag is pushed
+
+## [1.0.11] - 2025-06-28
+
+### Fixed
+- CSS `url()` replacement now applies offset-based updates per match instead of global `str_replace`
+- Duplicate local CSS and JS `<link>` / `<script>` tags are now removed when the same file appears more than once in a combine block
+- External asset detection is now case-insensitive for `http://` and `https://` URLs
+- Path traversal checks now normalise `..` segments when `realpath()` is unavailable
+- JavaScript combination now preserves load order using contiguous blocks, matching CSS behaviour
+- Pre-minified file detection now uses file extension checks instead of substring matching
+
+### Added
+- `MinifierAsset` helper for external URL detection, path normalisation, and root path validation
+- `MinifierHtmlReplacements` helper for testable offset-based HTML updates
+- `MinifierAsset::resolveWebPath()` for testable web path resolution with security checks
+- Expanded PHPUnit coverage for path resolution, traversal rejection, and pre-minified file detection
+
+### Changed
+- Renamed `helper/CssAssetPaths.php` to `helper/MinifierCssAssetPaths.php` to match the class name
+- `resolvePath()` now delegates to `MinifierAsset::resolveWebPath()`
+- Build script now runs tests before packaging, installs production dependencies in an isolated staging directory, and excludes `vendor/bin` from release archives
+
+## [1.0.10] - 2025-06-28
+
+### Fixed
+- **Critical**: Multiple CSS combine blocks now apply all HTML replacements in a single pass using original offsets, preventing corrupted markup when contiguous blocks are separated by external or excluded stylesheets
+- CSS combination now uses `execute()` instead of `minify()` for path conversion, avoiding spurious writes to `combined.css`
+- `resolvePath()` now validates paths with a directory-boundary check to prevent prefix-based traversal outside `JPATH_ROOT`
+
+## [1.0.9] - 2025-06-28
+
+### Fixed
+- HTML tag replacement now uses offset-based updates to avoid incorrect replacements when duplicate tags exist
+- Removed misleading namespace declaration from the plugin manifest
+
+### Added
+- `MinifierCssAssetPaths` helper class for testable CSS path handling
+- PHPUnit test suite for CSS asset path conversion
+- Offset-based `applyHtmlReplacements()` helper for safe HTML manipulation
+
+### Changed
+- CSS and JS combination now batch multiple minifiable files through a single minifier instance where possible
+- JavaScript combination now uses `addFile()` consistently with CSS, skipping re-minification of `.min.js` files
+- CSS asset path logic extracted to `helper/CssAssetPaths.php`
+
+## [1.0.8] - 2025-06-28
+
+### Fixed
+- Pre-minified `.min.css` files are no longer re-minified when included in CSS combination; asset paths are relocated instead
+- All `catch (Exception $e)` blocks now use `catch (\Exception $e)` for namespace-safe exception handling
+- Debug-level file logging is now gated behind the debug setting
+
+### Added
+- `getCssContentForCombine()` method to handle minified and pre-minified CSS files appropriately
+- `relocateCssAssetPaths()` and `replaceCssAssetPaths()` methods using the path-converter library for `url()` and `@import` handling
+
+## [1.0.7] - 2025-06-28
+
+### Fixed
+- **Critical**: Replaced custom `convertCssUrls()` with the minify library's path converter via `minify($targetPath)`, preserving root-relative URLs and correctly resolving `../` paths
+- **Critical**: Root-relative asset URLs in combined CSS are now prefixed with the Joomla base path for subdirectory installs
+- **Critical**: CSS files separated by excluded, external, or pre-minified stylesheets are now combined into separate contiguous blocks, preserving cascade order
+
+### Removed
+- Removed `convertCssUrls()` method in favour of library path conversion and `prefixSubdirectoryCssUrls()`
+
+### Added
+- `writeCombinedCssBlock()` method for writing each contiguous CSS combination block
+- `prefixSubdirectoryCssUrls()` method for subdirectory base path handling
+
 ## [1.0.6] - 2024-11-22
 
 ### Fixed

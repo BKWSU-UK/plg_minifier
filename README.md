@@ -31,19 +31,28 @@ A Joomla system plugin that automatically minifies CSS and JavaScript files to i
 
 If you prefer to build manually:
 
-1. Run Composer to install dependencies:
+1. Install dependencies and run tests:
    ```bash
-   composer install --no-dev --optimize-autoloader
+   composer install
+   composer test
    ```
-2. Create a ZIP file containing:
+2. Stage the plugin in a temporary directory and install production dependencies there:
+   ```bash
+   mkdir -p build/plg_system_minifier
+   cp minifier.php minifier.xml composer.json composer.lock build/plg_system_minifier/
+   cp -r language helper build/plg_system_minifier/
+   composer install --no-dev --optimize-autoloader --working-dir=build/plg_system_minifier
+   ```
+3. Create a ZIP file from `build/plg_system_minifier/` with this structure:
    - minifier.php
    - minifier.xml
    - vendor/ directory
    - language/ directory
+   - helper/ directory
    - composer.json
    - composer.lock
-3. Install the ZIP file through Joomla's Extension Manager
-4. Enable the plugin through Joomla's Plugin Manager
+4. Install the ZIP file through Joomla's Extension Manager
+5. Enable the plugin through Joomla's Plugin Manager
 
 ## Configuration
 

@@ -7,11 +7,10 @@
     <license>GNU General Public License version 2 or later</license>
     <authorEmail>allan@bkconnect.net</authorEmail>
     <authorUrl>www.brahmakumaris.org</authorUrl>
-    <version>1.0.6</version>
+    <version>1.0.12</version>
     <description>PLG_SYSTEM_MINIFIER_XML_DESCRIPTION</description>
     
     <!-- Minimum requirements -->
-    <namespace path="src">BrahmaKumaris\Plugin\System\Minifier</namespace>
     <minimumPhp>8.3.0</minimumPhp>
     <minimumJoomla>5.0.0</minimumJoomla>
     
@@ -21,12 +20,17 @@
         <filename>composer.lock</filename>
         <folder>vendor</folder>
         <folder>language</folder>
+        <folder>helper</folder>
     </files>
 
     <languages folder="language">
         <language tag="en-GB">en-GB/en-GB.plg_system_minifier.ini</language>
         <language tag="en-GB">en-GB/en-GB.plg_system_minifier.sys.ini</language>
     </languages>
+
+    <updateservers>
+        <server type="extension" priority="1" name="Minifier Plugin Updates">https://raw.githubusercontent.com/BKWSU-UK/plg_minifier/main/updates/plg_system_minifier.xml</server>
+    </updateservers>
 
     <config>
         <fields name="params">
