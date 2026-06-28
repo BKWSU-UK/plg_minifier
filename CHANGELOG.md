@@ -38,7 +38,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Joomla automatic update support via GitHub-hosted update server manifest and GitHub release packages
 - Build script now generates `updates/plg_system_minifier.xml` with package checksums for update verification
-- GitHub Actions release workflow that builds, publishes release assets, and updates the manifest on `main` when a `v*` tag is pushed
+- GitHub Actions release workflow that builds, publishes release assets, and appends a new manifest entry on `main` when a `v*` tag is pushed
 
 ## [1.0.11] - 2025-06-28
 

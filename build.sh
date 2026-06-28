@@ -105,9 +105,9 @@ DOWNLOAD_URL="https://github.com/${GITHUB_REPO}/releases/download/v${VERSION}/${
 INFO_URL="https://github.com/${GITHUB_REPO}/releases/tag/v${VERSION}"
 
 mkdir -p "$(dirname "$UPDATE_XML")"
-cat > "$UPDATE_XML" <<EOF
-<?xml version="1.0" encoding="utf-8"?>
-<updates>
+
+NEW_ENTRY=$(mktemp)
+cat > "$NEW_ENTRY" <<EOF
     <update>
         <name>${PLUGIN_NAME}</name>
         <description>Joomla CSS and JavaScript minifier system plugin</description>
@@ -131,8 +131,23 @@ cat > "$UPDATE_XML" <<EOF
         <sha384>${SHA384}</sha384>
         <sha512>${SHA512}</sha512>
     </update>
+EOF
+
+if [[ -f "$UPDATE_XML" ]] && grep -q '<updates>' "$UPDATE_XML"; then
+    if grep -q "<version>${VERSION}</version>" "$UPDATE_XML"; then
+        perl -0777 -i -pe "s/\s*<update>\s*<name>\Q${PLUGIN_NAME}\E<\/name>.*?<version>\Q${VERSION}\E<\/version>.*?<\/update>//s" "$UPDATE_XML"
+    fi
+    sed -i "/<updates>/r ${NEW_ENTRY}" "$UPDATE_XML"
+else
+    cat > "$UPDATE_XML" <<EOF
+<?xml version="1.0" encoding="utf-8"?>
+<updates>
+$(cat "$NEW_ENTRY")
 </updates>
 EOF
+fi
+
+rm -f "$NEW_ENTRY"
 
 echo -e "${GREEN}Build complete!${NC}"
 echo -e "${GREEN}Package created: ${DIST_DIR}/${ZIP_FILE}${NC}"

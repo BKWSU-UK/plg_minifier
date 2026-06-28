@@ -41,6 +41,15 @@ jobs:
       - name: Install build dependencies
         run: sudo apt-get update && sudo apt-get install -y zip
 
+      - name: Prepare update server manifest
+        run: |
+          git fetch origin main
+          if git show origin/main:updates/plg_system_minifier.xml > updates/plg_system_minifier.xml 2>/dev/null; then
+            echo "Loaded existing update server manifest from main"
+          else
+            echo "No existing update server manifest on main"
+          fi
+
       - name: Build release package
         run: ./build.sh
 
@@ -55,9 +64,11 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
+          cp updates/plg_system_minifier.xml /tmp/plg_system_minifier.xml
+
           git fetch origin main
           git checkout main
-          git checkout "${GITHUB_SHA}" -- updates/plg_system_minifier.xml
+          cp /tmp/plg_system_minifier.xml updates/plg_system_minifier.xml
 
           if git diff --quiet -- updates/plg_system_minifier.xml; then
             echo "Update server manifest already up to date on main"
@@ -65,5 +76,5 @@ jobs:
           fi
 
           git add updates/plg_system_minifier.xml
-          git commit -m "Update release manifest for ${GITHUB_REF_NAME}"
+          git commit -m "Add release manifest entry for ${GITHUB_REF_NAME}"
           git push origin main
