@@ -47,4 +47,24 @@ class MinifierHtmlReplacementsTest extends TestCase
 
         $this->assertSame('<script src="/media/combined.js"></script>', $result);
     }
+
+    public function testExternalScriptElementLengthIncludesClosingTag(): void
+    {
+        $body = '<script src="/media/a.js"></script><script src="/media/b.js"></script>';
+
+        $this->assertSame(
+            strlen('<script src="/media/a.js"></script>'),
+            MinifierHtmlReplacements::externalScriptElementLength($body, 0, '<script src="/media/a.js">')
+        );
+    }
+
+    public function testExternalScriptElementLengthHandlesSelfClosingOpeningTag(): void
+    {
+        $body = '<script src="/media/a.js" />';
+
+        $this->assertSame(
+            strlen('<script src="/media/a.js" />'),
+            MinifierHtmlReplacements::externalScriptElementLength($body, 0, '<script src="/media/a.js" />')
+        );
+    }
 }

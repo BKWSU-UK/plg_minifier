@@ -5,6 +5,17 @@
  */
 class MinifierHtmlReplacements
 {
+    public static function externalScriptElementLength(string $body, int $offset, string $openingTag): int
+    {
+        $length = strlen($openingTag);
+
+        if (str_starts_with(substr($body, $offset + $length), '</script>')) {
+            $length += strlen('</script>');
+        }
+
+        return $length;
+    }
+
     /**
      * @param array<int, array{offset: int, length: int, replacement: string}> $replacements
      */

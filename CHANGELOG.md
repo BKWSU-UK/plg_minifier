@@ -5,6 +5,34 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.15] - 2025-06-28
+
+### Fixed
+- JavaScript combination now splits into separate blocks when an inline `<script>` tag appears between external script files, preserving configuration scripts (such as GDPR `gdprConfigurationOptions`) that must execute before dependent bundled files
+
+### Added
+- `MinifierAsset::gapContainsInlineScript()` to detect inline scripts between external JavaScript tags
+
+## [1.0.14] - 2025-06-28
+
+### Fixed
+- **Critical**: JavaScript combination now inserts semicolon boundaries between concatenated files, preventing files ending with `})` from being parsed as a function call on the next file (fixes `$(...) is not a function` when template scripts precede Joomla core scripts)
+- Combined JavaScript output now strips `sourceMappingURL` comments from bundled files to avoid spurious 404 errors in browser developer tools
+
+### Added
+- `MinifierAsset::prepareJsCombineSegment()` for safe JavaScript file concatenation
+
+## [1.0.13] - 2025-06-28
+
+### Fixed
+- **Critical**: JavaScript combination now removes complete `<script src="..."></script>` elements instead of only the opening tag, preventing orphaned `</script>` tags and corrupted page markup
+- **Critical**: jQuery and `jquery-noconflict` are now ordered before other scripts inside combined JavaScript bundles, preventing "jQuery is not defined" errors when template scripts load before jQuery in the page HTML
+- Combined JavaScript files are now inserted after any immediately following jQuery dependency scripts when pre-minified files are excluded from combination
+
+### Added
+- `MinifierAsset::sortJsCombineEntries()` and jQuery dependency detection helpers
+- `MinifierHtmlReplacements::externalScriptElementLength()` for full external script tag replacement
+
 ## [1.0.12] - 2025-06-28
 
 ### Added

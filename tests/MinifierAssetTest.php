@@ -65,4 +65,49 @@ class MinifierAssetTest extends TestCase
         $this->assertFalse(MinifierAsset::isPreMinifiedJs('/media/backup.min.js.bak'));
         $this->assertFalse(MinifierAsset::isPreMinifiedJs('/media/app.js'));
     }
+
+    public function testIsJqueryDependencyDetectsCoreAndNoConflictFiles(): void
+    {
+        $this->assertTrue(MinifierAsset::isJqueryCore('/media/vendor/jquery/js/jquery.min.js'));
+        $this->assertTrue(MinifierAsset::isJqueryNoConflict('/media/legacy/js/jquery-noconflict.min.js'));
+        $this->assertTrue(MinifierAsset::isJqueryDependency('/media/vendor/jquery/js/jquery.min.js'));
+        $this->assertFalse(MinifierAsset::isJqueryDependency('/templates/ism/js/template.min.js'));
+    }
+
+    public function testPrepareJsCombineSegmentPrefixesSemicolonAndStripsSourceMap(): void
+    {
+        $segment = MinifierAsset::prepareJsCombineSegment("$(function(){})//# sourceMappingURL=bootstrap.min.js.map\n");
+
+        $this->assertSame(";$(function(){})", trim($segment));
+        $this->assertStringNotContainsString('sourceMappingURL', $segment);
+    }
+
+    public function testGapContainsInlineScriptDetectsInlineScriptTags(): void
+    {
+        $gap = '</script><script>var gdprConfigurationOptions = {};</script><script src="/media/a.js">';
+
+        $this->assertTrue(MinifierAsset::gapContainsInlineScript($gap));
+        $this->assertFalse(MinifierAsset::gapContainsInlineScript('</script><script src="/media/a.js"></script>'));
+        $this->assertFalse(MinifierAsset::gapContainsInlineScript(''));
+    }
+
+    public function testSortJsCombineEntriesPlacesJqueryBeforeDependents(): void
+    {
+        $entries = [
+            ['path' => '/var/www/templates/ism/js/template.min.js', 'cleanJsFile' => '/templates/ism/js/template.min.js'],
+            ['path' => '/var/www/media/vendor/jquery/js/jquery.min.js', 'cleanJsFile' => '/media/vendor/jquery/js/jquery.min.js'],
+            ['path' => '/var/www/templates/ism/js/bootstrap.bundle.min.js', 'cleanJsFile' => '/templates/ism/js/bootstrap.bundle.min.js'],
+            ['path' => '/var/www/media/legacy/js/jquery-noconflict.min.js', 'cleanJsFile' => '/media/legacy/js/jquery-noconflict.min.js'],
+        ];
+
+        $sorted = MinifierAsset::sortJsCombineEntries($entries);
+        $order = array_column($sorted, 'cleanJsFile');
+
+        $this->assertSame('/media/vendor/jquery/js/jquery.min.js', $order[0]);
+        $this->assertSame('/media/legacy/js/jquery-noconflict.min.js', $order[1]);
+        $this->assertGreaterThan(
+            array_search('/media/legacy/js/jquery-noconflict.min.js', $order, true),
+            array_search('/templates/ism/js/template.min.js', $order, true)
+        );
+    }
 }

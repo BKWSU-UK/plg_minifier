@@ -105,6 +105,71 @@ class MinifierAsset
         return self::hasExtension($path, '.min.js');
     }
 
+    public static function isJqueryCore(string $path): bool
+    {
+        $path = strtolower(explode('?', $path, 2)[0]);
+
+        return preg_match('#/jquery(?:\.min)?\.js$#', $path) === 1;
+    }
+
+    public static function isJqueryNoConflict(string $path): bool
+    {
+        $path = strtolower(explode('?', $path, 2)[0]);
+
+        return str_contains($path, 'jquery-noconflict');
+    }
+
+    public static function isJqueryDependency(string $path): bool
+    {
+        return self::isJqueryCore($path) || self::isJqueryNoConflict($path);
+    }
+
+    /**
+     * @param array<int, array{path: string, cleanJsFile: string}> $entries
+     * @return array<int, array{path: string, cleanJsFile: string}>
+     */
+    public static function sortJsCombineEntries(array $entries): array
+    {
+        usort($entries, static function (array $a, array $b): int {
+            $priority = static function (array $entry): int {
+                if (self::isJqueryCore($entry['cleanJsFile'])) {
+                    return 0;
+                }
+
+                if (self::isJqueryNoConflict($entry['cleanJsFile'])) {
+                    return 1;
+                }
+
+                return 2;
+            };
+
+            return $priority($a) <=> $priority($b);
+        });
+
+        return $entries;
+    }
+
+    public static function prepareJsCombineSegment(string $fileContent): string
+    {
+        $fileContent = preg_replace('/\/\/#\s*sourceMappingURL=\S+/', '', $fileContent) ?? $fileContent;
+        $fileContent = trim($fileContent);
+
+        if ($fileContent === '') {
+            return "\n";
+        }
+
+        return ';' . $fileContent . "\n";
+    }
+
+    public static function gapContainsInlineScript(string $html): bool
+    {
+        if ($html === '') {
+            return false;
+        }
+
+        return preg_match('/<script(?![^>]*\bsrc\s*=)[^>]*>/i', $html) === 1;
+    }
+
     private static function hasExtension(string $path, string $extension): bool
     {
         $path = explode('?', $path, 2)[0];

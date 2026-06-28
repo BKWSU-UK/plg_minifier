@@ -298,8 +298,19 @@ class PlgSystemMinifier extends CMSPlugin
             $combineAll = $this->params->get('combine_all_js', 0);
             $blocks = [];
             $currentBlock = null;
+            $previousMatchIndex = null;
 
             foreach ($matches[2] as $index => $jsFileMatch) {
+                if ($previousMatchIndex !== null
+                    && $this->gapContainsInlineScriptBetweenMatches($body, $matches, $previousMatchIndex, $index)) {
+                    if ($currentBlock !== null && $currentBlock['files'] !== []) {
+                        $blocks[] = $currentBlock;
+                        $currentBlock = null;
+                    }
+                }
+
+                $previousMatchIndex = $index;
+
                 $jsFile = $this->getMatchValue($jsFileMatch);
                 if (strpos($jsFile, '?') !== false) {
                     list($cleanJsFile,) = explode('?', $jsFile, 2);
@@ -372,7 +383,7 @@ class PlgSystemMinifier extends CMSPlugin
             $cacheDirs = [];
 
             foreach ($blocks as $block) {
-                $blockResult = $this->prepareCombinedJsBlock($matches, $block);
+                $blockResult = $this->prepareCombinedJsBlock($body, $matches, $block, $excludeArray, $rootPath, $combineAll);
 
                 if ($blockResult !== null) {
                     array_push($jsReplacements, ...$blockResult['replacements']);
@@ -424,11 +435,19 @@ class PlgSystemMinifier extends CMSPlugin
                 try {
                     $minifiedUrl = $this->minifyJsFile($cleanJsFile, $rootPath);
                     if ($minifiedUrl) {
-                        $tag = $this->getTagString($matches, $index);
+                        $offset = $this->getTagOffset($matches, $index);
+                        $openingTag = $this->getTagString($matches, $index);
+                        $length = MinifierHtmlReplacements::externalScriptElementLength($body, $offset, $openingTag);
+                        $replacementTag = str_replace($jsFile, $minifiedUrl . $queryString, $openingTag);
+
+                        if ($length > strlen($openingTag)) {
+                            $replacementTag .= '</script>';
+                        }
+
                         $jsReplacements[] = [
-                            'offset' => $this->getTagOffset($matches, $index),
-                            'length' => strlen($tag),
-                            'replacement' => str_replace($jsFile, $minifiedUrl . $queryString, $tag),
+                            'offset' => $offset,
+                            'length' => $length,
+                            'replacement' => $replacementTag,
                         ];
                     }
                 } catch (\Exception $e) {
@@ -759,6 +778,70 @@ class PlgSystemMinifier extends CMSPlugin
         return $matches[0][$index][1];
     }
 
+    protected function getScriptElementLength(string $body, array $matches, int $index): int
+    {
+        return MinifierHtmlReplacements::externalScriptElementLength(
+            $body,
+            $this->getTagOffset($matches, $index),
+            $this->getTagString($matches, $index)
+        );
+    }
+
+    protected function gapContainsInlineScriptBetweenMatches(
+        string $body,
+        array $matches,
+        int $previousIndex,
+        int $nextIndex
+    ): bool {
+        $gapStart = $this->getTagOffset($matches, $previousIndex)
+            + $this->getScriptElementLength($body, $matches, $previousIndex);
+        $gapEnd = $this->getTagOffset($matches, $nextIndex);
+
+        if ($gapEnd <= $gapStart) {
+            return false;
+        }
+
+        return MinifierAsset::gapContainsInlineScript(substr($body, $gapStart, $gapEnd - $gapStart));
+    }
+
+    /**
+     * @param array $scriptMatches preg_match_all results for script tags
+     */
+    protected function resolveJsCombineAnchorIndex(
+        array $scriptMatches,
+        array $blockIndices,
+        array $excludeArray,
+        string $rootPath,
+        bool $combineAll
+    ): int {
+        $anchorIndex = $blockIndices[count($blockIndices) - 1];
+        $matchCount = count($scriptMatches[0]);
+
+        if ($combineAll) {
+            return $anchorIndex;
+        }
+
+        for ($index = $anchorIndex + 1; $index < $matchCount; $index++) {
+            $jsFile = $this->getMatchValue($scriptMatches[2][$index]);
+            $cleanJsFile = explode('?', $jsFile, 2)[0];
+
+            if ($this->isExcluded($cleanJsFile, $excludeArray)
+                || MinifierAsset::isExternalUrl($cleanJsFile)
+                || !MinifierAsset::isJqueryDependency($cleanJsFile)) {
+                break;
+            }
+
+            $jsPath = $this->resolvePath($cleanJsFile, $rootPath);
+            if ($jsPath === false || !file_exists($jsPath)) {
+                break;
+            }
+
+            $anchorIndex = $index;
+        }
+
+        return $anchorIndex;
+    }
+
     /**
      * @param array<int, array{offset: int, length: int, replacement: string}> $replacements
      */
@@ -813,6 +896,8 @@ class PlgSystemMinifier extends CMSPlugin
             return '';
         }
 
+        $entries = MinifierAsset::sortJsCombineEntries($entries);
+
         $allMinifiable = !array_filter(
             $entries,
             static fn(array $entry): bool => MinifierAsset::isPreMinifiedJs($entry['cleanJsFile'])
@@ -834,7 +919,8 @@ class PlgSystemMinifier extends CMSPlugin
 
         foreach ($entries as $entry) {
             $fileContent = $this->getJsContentForCombine($entry['path'], $entry['cleanJsFile']);
-            $content .= "/* File: {$entry['cleanJsFile']} */\n" . $fileContent . "\n";
+            $content .= "/* File: {$entry['cleanJsFile']} */\n"
+                . MinifierAsset::prepareJsCombineSegment($fileContent);
         }
 
         return $content;
@@ -961,15 +1047,32 @@ class PlgSystemMinifier extends CMSPlugin
     /**
      * Builds a combined JS cache file and returns HTML replacements for one block
      *
+     * @param string $body Page HTML content
      * @param array $scriptMatches preg_match_all results for script tags
      * @param array $block Combined block data with files and indices
+     * @param array<int, string> $excludeArray Paths to exclude from combination
+     * @param string $rootPath Joomla root path
+     * @param bool $combineAll Whether pre-minified files are included in the block
      * @return array{replacements: array<int, array{offset: int, length: int, replacement: string}>, cacheDir: string}|null
      */
-    protected function prepareCombinedJsBlock(array $scriptMatches, array $block): ?array
-    {
+    protected function prepareCombinedJsBlock(
+        string $body,
+        array $scriptMatches,
+        array $block,
+        array $excludeArray,
+        string $rootPath,
+        bool $combineAll
+    ): ?array {
         $combinedContent = $this->buildJsCombineContent($block['files']);
         $tagsToRemove = $block['indices'];
-        $firstMatchIndex = $tagsToRemove[0];
+        $anchorIndex = $this->resolveJsCombineAnchorIndex(
+            $scriptMatches,
+            $tagsToRemove,
+            $excludeArray,
+            $rootPath,
+            $combineAll
+        );
+        $anchorInBlock = in_array($anchorIndex, $tagsToRemove, true);
 
         if ($combinedContent === '') {
             return null;
@@ -1004,10 +1107,31 @@ class PlgSystemMinifier extends CMSPlugin
             $replacements = [];
 
             foreach ($tagsToRemove as $index) {
+                if ($anchorInBlock && $index === $anchorIndex) {
+                    continue;
+                }
+
                 $replacements[] = [
                     'offset' => $this->getTagOffset($scriptMatches, $index),
-                    'length' => strlen($this->getTagString($scriptMatches, $index)),
-                    'replacement' => $index === $firstMatchIndex ? $combinedTag : '',
+                    'length' => $this->getScriptElementLength($body, $scriptMatches, $index),
+                    'replacement' => '',
+                ];
+            }
+
+            if ($anchorInBlock) {
+                $replacements[] = [
+                    'offset' => $this->getTagOffset($scriptMatches, $anchorIndex),
+                    'length' => $this->getScriptElementLength($body, $scriptMatches, $anchorIndex),
+                    'replacement' => $combinedTag,
+                ];
+            } else {
+                $anchorOffset = $this->getTagOffset($scriptMatches, $anchorIndex);
+                $anchorLength = $this->getScriptElementLength($body, $scriptMatches, $anchorIndex);
+
+                $replacements[] = [
+                    'offset' => $anchorOffset + $anchorLength,
+                    'length' => 0,
+                    'replacement' => $combinedTag,
                 ];
             }
 
