@@ -110,4 +110,42 @@ class MinifierAssetTest extends TestCase
             array_search('/templates/ism/js/template.min.js', $order, true)
         );
     }
+
+    public function testFileContentRequiresJqueryDetectsTemplateUsage(): void
+    {
+        $this->assertTrue(
+            MinifierAsset::fileContentRequiresJquery('jQuery(document).ready(function(){})')
+        );
+        $this->assertTrue(
+            MinifierAsset::fileContentRequiresJquery("});$(function(){})")
+        );
+        $this->assertFalse(
+            MinifierAsset::fileContentRequiresJquery('function $(t,e){return t+e;}')
+        );
+    }
+
+    public function testBlockRequiresExternalJqueryWhenTemplateUsesJqueryWithoutCore(): void
+    {
+        $templatePath = sys_get_temp_dir() . '/minifier-template-test.js';
+        file_put_contents($templatePath, 'jQuery(document).ready(function(){});');
+
+        $entries = [
+            ['path' => '/var/www/templates/ism/js/bootstrap.bundle.min.js', 'cleanJsFile' => '/templates/ism/js/bootstrap.bundle.min.js'],
+            ['path' => $templatePath, 'cleanJsFile' => '/templates/ism/js/template.min.js'],
+        ];
+
+        $this->assertTrue(MinifierAsset::blockRequiresExternalJquery($entries));
+
+        @unlink($templatePath);
+    }
+
+    public function testBlockRequiresExternalJqueryIsFalseWhenJqueryIncluded(): void
+    {
+        $entries = [
+            ['path' => '/var/www/media/vendor/jquery/js/jquery.min.js', 'cleanJsFile' => '/media/vendor/jquery/js/jquery.min.js'],
+            ['path' => '/var/www/templates/ism/js/template.min.js', 'cleanJsFile' => '/templates/ism/js/template.min.js'],
+        ];
+
+        $this->assertFalse(MinifierAsset::blockRequiresExternalJquery($entries));
+    }
 }

@@ -7,6 +7,29 @@
         <type>plugin</type>
         <folder>system</folder>
         <client>site</client>
+        <version>1.0.20</version>
+        <infourl title="Minifier Plugin Release Notes">https://github.com/BKWSU-UK/plg_minifier/releases/tag/v1.0.20</infourl>
+        <downloads>
+            <downloadurl type="full" format="zip">https://github.com/BKWSU-UK/plg_minifier/releases/download/v1.0.20/plg_system_minifier_v1.0.20.zip</downloadurl>
+        </downloads>
+        <tags>
+            <tag>stable</tag>
+        </tags>
+        <targetplatform name="joomla" version="5\.[0-9]+" />
+        <php_minimum>8.3</php_minimum>
+        <maintainer>Allan Schweitz</maintainer>
+        <maintainerurl>https://www.brahmakumaris.org</maintainerurl>
+        <sha256>b003b18ed8e909312423c4e4aa8e641c65bcda0fecbf183abb212730170b68d9</sha256>
+        <sha384>10067d1b22b9c5d5734ea8b71999c592179783b0dc8169f89258897d69df1e77c2a3d9d6ae8e6fcedf5ab60d29de7d68</sha384>
+        <sha512>a70ed588611618bc15ea142b7ac53c07185126a920c869b36cc40678158cd33b5b14aa712fb49bfefa3a1dfb5658bcabe20ec41de77259f38b80d2a81e67eb82</sha512>
+    </update>
+    <update>
+        <name>plg_system_minifier</name>
+        <description>Joomla CSS and JavaScript minifier system plugin</description>
+        <element>minifier</element>
+        <type>plugin</type>
+        <folder>system</folder>
+        <client>site</client>
         <version>1.0.19</version>
         <infourl title="Minifier Plugin Release Notes">https://github.com/BKWSU-UK/plg_minifier/releases/tag/v1.0.19</infourl>
         <downloads>

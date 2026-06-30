@@ -806,20 +806,39 @@ class PlgSystemMinifier extends CMSPlugin
 
     /**
      * @param array $scriptMatches preg_match_all results for script tags
+     * @param array<int, array{path: string, cleanJsFile: string}> $blockFiles
      */
     protected function resolveJsCombineAnchorIndex(
+        string $body,
         array $scriptMatches,
         array $blockIndices,
+        array $blockFiles,
         array $excludeArray,
         string $rootPath,
         bool $combineAll
     ): int {
         $anchorIndex = $blockIndices[count($blockIndices) - 1];
-        $matchCount = count($scriptMatches[0]);
+
+        if (MinifierAsset::blockRequiresExternalJquery($blockFiles)) {
+            $jqueryAnchor = $this->findAnchorAfterLaterJqueryScripts(
+                $body,
+                $scriptMatches,
+                $excludeArray,
+                $rootPath,
+                $combineAll,
+                $anchorIndex
+            );
+
+            if ($jqueryAnchor !== null) {
+                return $jqueryAnchor;
+            }
+        }
 
         if ($combineAll) {
             return $anchorIndex;
         }
+
+        $matchCount = count($scriptMatches[0]);
 
         for ($index = $anchorIndex + 1; $index < $matchCount; $index++) {
             $jsFile = $this->getMatchValue($scriptMatches[2][$index]);
@@ -837,6 +856,71 @@ class PlgSystemMinifier extends CMSPlugin
             }
 
             $anchorIndex = $index;
+        }
+
+        return $anchorIndex;
+    }
+
+    /**
+     * @param array $scriptMatches preg_match_all results for script tags
+     */
+    protected function findAnchorAfterLaterJqueryScripts(
+        string $body,
+        array $scriptMatches,
+        array $excludeArray,
+        string $rootPath,
+        bool $combineAll,
+        int $afterIndex
+    ): ?int {
+        $matchCount = count($scriptMatches[0]);
+        $jqueryIndex = null;
+
+        for ($index = 0; $index < $matchCount; $index++) {
+            $jsFile = $this->getMatchValue($scriptMatches[2][$index]);
+            $cleanJsFile = explode('?', $jsFile, 2)[0];
+
+            if ($this->isExcluded($cleanJsFile, $excludeArray)
+                || MinifierAsset::isExternalUrl($cleanJsFile)) {
+                continue;
+            }
+
+            if (MinifierAsset::isJqueryCore($cleanJsFile) && $index > $afterIndex) {
+                $jqueryIndex = $index;
+                break;
+            }
+        }
+
+        if ($jqueryIndex === null) {
+            return null;
+        }
+
+        $anchorIndex = $jqueryIndex;
+        $previousIndex = $jqueryIndex;
+
+        for ($index = $jqueryIndex + 1; $index < $matchCount; $index++) {
+            if ($this->gapContainsInlineScriptBetweenMatches($body, $scriptMatches, $previousIndex, $index)) {
+                break;
+            }
+
+            $jsFile = $this->getMatchValue($scriptMatches[2][$index]);
+            $cleanJsFile = explode('?', $jsFile, 2)[0];
+
+            if ($this->isExcluded($cleanJsFile, $excludeArray)
+                || MinifierAsset::isExternalUrl($cleanJsFile)) {
+                break;
+            }
+
+            $jsPath = $this->resolvePath($cleanJsFile, $rootPath);
+            if ($jsPath === false || !file_exists($jsPath)) {
+                break;
+            }
+
+            if (MinifierAsset::isPreMinifiedJs($cleanJsFile) && !$combineAll) {
+                break;
+            }
+
+            $anchorIndex = $index;
+            $previousIndex = $index;
         }
 
         return $anchorIndex;
@@ -1075,8 +1159,10 @@ class PlgSystemMinifier extends CMSPlugin
         $combinedContent = $this->buildJsCombineContent($block['files']);
         $tagsToRemove = $block['indices'];
         $anchorIndex = $this->resolveJsCombineAnchorIndex(
+            $body,
             $scriptMatches,
             $tagsToRemove,
+            $block['files'],
             $excludeArray,
             $rootPath,
             $combineAll

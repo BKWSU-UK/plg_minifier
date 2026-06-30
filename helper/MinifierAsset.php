@@ -124,6 +124,33 @@ class MinifierAsset
         return self::isJqueryCore($path) || self::isJqueryNoConflict($path);
     }
 
+    public static function fileContentRequiresJquery(string $content): bool
+    {
+        return preg_match('/\bjQuery\s*\(|(?:^|[{;}])\s*\$\s*\(/m', $content) === 1;
+    }
+
+    /**
+     * @param array<int, array{path: string, cleanJsFile: string}> $entries
+     */
+    public static function blockRequiresExternalJquery(array $entries): bool
+    {
+        foreach ($entries as $entry) {
+            if (self::isJqueryCore($entry['cleanJsFile'])) {
+                return false;
+            }
+        }
+
+        foreach ($entries as $entry) {
+            $content = file_get_contents($entry['path']);
+
+            if ($content !== false && self::fileContentRequiresJquery($content)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     /**
      * @param array<int, array{path: string, cleanJsFile: string}> $entries
      * @return array<int, array{path: string, cleanJsFile: string}>
