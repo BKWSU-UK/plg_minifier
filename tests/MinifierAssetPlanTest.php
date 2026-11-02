@@ -22,6 +22,10 @@ class MinifierAssetPlanTest extends TestCase
         $this->write('/js/vendor/lib.js', 'var lib = 1;');
         $this->write('/media/vendor/jquery/js/jquery.min.js', 'window.jQuery=function(){};');
         $this->write('/media/legacy/js/jquery-noconflict.min.js', 'jQuery.noConflict();');
+        $this->write('/css/a.css', 'a { color: red; }');
+        $this->write('/css/b.css', 'b { color: blue; }');
+        $this->write('/css/pre.min.css', 'p{margin:0}');
+        $this->write('/css/vendor/lib.css', '.lib { top: 0; }');
     }
 
     protected function tearDown(): void
@@ -58,19 +62,25 @@ class MinifierAssetPlanTest extends TestCase
     }
 
     /**
-     * Plans the page, places a numbered placeholder bundle for each block,
-     * and returns the rewritten page plus each block's bundle file URLs.
+     * Plans the page's scripts (or stylesheets), places a numbered placeholder bundle
+     * for each block, and returns the rewritten page plus each block's bundle file paths.
      *
+     * @param list<string> $excludePaths
      * @return array{0: string, 1: list<list<string>>}
      */
-    private function combine(string $html, bool $combineAll = false, array $excludePaths = []): array
-    {
-        $tags = MinifierHtmlReplacements::scripts($html);
-        $blocks = MinifierAssetPlan::scripts($this->root, $excludePaths, $combineAll)->blocks($tags);
+    private function combine(
+        string $html,
+        bool $combineAll = false,
+        array $excludePaths = [],
+        MinifierAssetType $type = MinifierAssetType::Js
+    ): array {
+        [$tags, $plan, $bundle] = $type === MinifierAssetType::Js
+            ? [MinifierHtmlReplacements::scripts($html), MinifierAssetPlan::scripts(...), self::bundle(...)]
+            : [MinifierHtmlReplacements::stylesheets($html), MinifierAssetPlan::stylesheets(...), self::stylesheetBundle(...)];
         $bundleFiles = [];
 
-        foreach ($blocks as $number => $block) {
-            $block->placeBundle($tags, self::bundle($number));
+        foreach ($plan($this->root, $excludePaths, $combineAll)->blocks($tags) as $number => $block) {
+            $block->placeBundle($tags, $bundle($number));
             $bundleFiles[] = array_column($block->files, 'webPath');
         }
 
@@ -202,5 +212,92 @@ class MinifierAssetPlanTest extends TestCase
             '/js/template.js',
             '/js/a.js',
         ]], $files);
+    }
+
+    private static function stylesheet(string $name): string
+    {
+        return '<link href="/css/' . $name . '" rel="stylesheet">';
+    }
+
+    private static function stylesheetBundle(int $number): string
+    {
+        return '<link href="/bundle-' . $number . '.css" rel="stylesheet">';
+    }
+
+    public function testContiguousStylesheetsBecomeOneBundleInPlaceOfTheFirstTag(): void
+    {
+        [$html, $files] = $this->combine(
+            self::stylesheet('a.css') . "\n" . self::stylesheet('b.css?v=2'),
+            type: MinifierAssetType::Css
+        );
+
+        $this->assertSame(self::stylesheetBundle(0) . "\n", $html);
+        $this->assertSame([['/css/a.css', '/css/b.css']], $files);
+    }
+
+    public static function stylesheetBlockBreakers(): array
+    {
+        return [
+            'excluded' => [self::stylesheet('vendor/lib.css')],
+            'external' => ['<link href="https://cdn.example.com/x.css" rel="stylesheet">'],
+            'missing' => [self::stylesheet('missing.css')],
+            'outside the site root' => ['<link href="/css/../../outside.css" rel="stylesheet">'],
+            'pre-minified' => [self::stylesheet('pre.min.css')],
+        ];
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('stylesheetBlockBreakers')]
+    public function testAStylesheetThatCannotBeCombinedSplitsTheBlockAndKeepsItsPlaceInTheCascade(string $breaker): void
+    {
+        [$html, $files] = $this->combine(
+            self::stylesheet('a.css') . $breaker . self::stylesheet('b.css'),
+            excludePaths: ['/css/vendor/'],
+            type: MinifierAssetType::Css
+        );
+
+        $this->assertSame(self::stylesheetBundle(0) . $breaker . self::stylesheetBundle(1), $html);
+        $this->assertSame([['/css/a.css'], ['/css/b.css']], $files);
+    }
+
+    public function testCombineAllKeepsPreMinifiedStylesheetsInTheBlockInPageOrder(): void
+    {
+        [$html, $files] = $this->combine(
+            self::stylesheet('a.css') . self::stylesheet('pre.min.css') . self::stylesheet('b.css'),
+            combineAll: true,
+            type: MinifierAssetType::Css
+        );
+
+        $this->assertSame(self::stylesheetBundle(0), $html);
+        $this->assertSame([['/css/a.css', '/css/pre.min.css', '/css/b.css']], $files);
+    }
+
+    public function testADuplicateStylesheetInTheBlockIsRemovedButItsFileBundledOnce(): void
+    {
+        [$html, $files] = $this->combine(
+            self::stylesheet('a.css') . self::stylesheet('b.css') . self::stylesheet('a.css?v=2'),
+            type: MinifierAssetType::Css
+        );
+
+        $this->assertSame(self::stylesheetBundle(0), $html);
+        $this->assertSame([['/css/a.css', '/css/b.css']], $files);
+    }
+
+    public function testEachFileAddedToABundleIsReportedAtDebugLevel(): void
+    {
+        $messages = [];
+        $log = function (string $level, string $message) use (&$messages): void {
+            $messages[] = [$level, $message];
+        };
+
+        MinifierAssetPlan::stylesheets($this->root, [], false, $log)
+            ->blocks(MinifierHtmlReplacements::stylesheets(self::stylesheet('a.css') . self::stylesheet('b.css')));
+
+        $this->assertSame(
+            [
+                ['debug', 'Adding file to combination: ' . $this->root . '/css/a.css'],
+                ['debug', 'Adding file to combination: ' . $this->root . '/css/b.css'],
+            ],
+            $messages
+        );
     }
 }

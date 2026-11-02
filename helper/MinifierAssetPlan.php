@@ -8,6 +8,9 @@ final class MinifierAssetPlan
 {
     private readonly MinifierAssetLocator $locator;
 
+    /** @var \Closure(string $level, string $message): void */
+    private readonly \Closure $log;
+
     /**
      * @param list<string> $excludePaths
      */
@@ -18,7 +21,9 @@ final class MinifierAssetPlan
         private readonly bool $combineAll,
         ?\Closure $log
     ) {
-        $this->locator = new MinifierAssetLocator($rootPath, $excludePaths, $log);
+        $this->log = $log ?? static function (string $level, string $message): void {
+        };
+        $this->locator = new MinifierAssetLocator($rootPath, $excludePaths, $this->log);
     }
 
     /**
@@ -29,6 +34,16 @@ final class MinifierAssetPlan
     public static function scripts(string $rootPath, array $excludePaths, bool $combineAll, ?\Closure $log = null): self
     {
         return new self($rootPath, $excludePaths, MinifierAssetType::Js, $combineAll, $log);
+    }
+
+    /**
+     * @param list<string> $excludePaths URLs containing any of these substrings are never combined
+     * @param bool $combineAll Whether pre-minified files are combined too
+     * @param (\Closure(string $level, string $message): void)|null $log Receives 'debug' and 'warning' messages
+     */
+    public static function stylesheets(string $rootPath, array $excludePaths, bool $combineAll, ?\Closure $log = null): self
+    {
+        return new self($rootPath, $excludePaths, MinifierAssetType::Css, $combineAll, $log);
     }
 
     /**
@@ -45,7 +60,7 @@ final class MinifierAssetPlan
                 $blocks[] = new MinifierCombineBlock(
                     $indices,
                     $this->inBundleOrder($files),
-                    $this->anchorIndex($tags, $indices[count($indices) - 1], $files)
+                    $this->anchorIndex($tags, $indices, $files)
                 );
             }
 
@@ -69,6 +84,7 @@ final class MinifierAssetPlan
             // A file already in this bundle: drop the repeated tag, bundle the file once
             if (!in_array($path, array_column($files, 'path'), true)) {
                 $files[] = ['path' => $path, 'webPath' => self::webPath($tags, $index)];
+                ($this->log)('debug', 'Adding file to combination: ' . $path);
             }
 
             $indices[] = $index;
@@ -80,7 +96,8 @@ final class MinifierAssetPlan
     }
 
     /**
-     * Where the bundle tag goes. By default it replaces the block's last tag.
+     * Where the bundle tag goes. A stylesheet bundle replaces the block's first tag; a
+     * script bundle by default replaces the block's last tag.
      *
      * A script bundle that calls jQuery without containing it jumps to the first local
      * jQuery core later in the page, whatever lies in between, since it cannot run before
@@ -88,13 +105,16 @@ final class MinifierAssetPlan
      * Otherwise it moves past trailing jQuery files the block skipped. Both walks stop
      * at the first tag that breaks contiguity, such as an inline <script> in between.
      *
+     * @param list<int> $indices The block's tags, in page order
      * @param list<array{path: string, webPath: string}> $files
      */
-    private function anchorIndex(MinifierHtmlReplacements $tags, int $lastIndex, array $files): int
+    private function anchorIndex(MinifierHtmlReplacements $tags, array $indices, array $files): int
     {
-        if ($this->type !== MinifierAssetType::Js) {
-            return $lastIndex;
+        if ($this->type === MinifierAssetType::Css) {
+            return $indices[0];
         }
+
+        $lastIndex = $indices[count($indices) - 1];
 
         if (self::requiresExternalJquery($files)) {
             $jqueryIndex = $this->laterJqueryCoreIndex($tags, $lastIndex);

@@ -130,77 +130,15 @@ class PlgSystemMinifier extends CMSPlugin
         $excludePaths = $this->params->get('exclude_paths', '');
         $excludeArray = array_filter(array_map('trim', explode("\n", $excludePaths)));
 
-        // If combine_css is enabled, collect contiguous blocks of CSS content
+        // If combine_css is enabled, replace each planned block of stylesheets with one bundle
         if ($this->params->get('combine_css', 0)) {
-            $combineAll = $this->params->get('combine_all_css', 0);
             $targetPath = JPATH_ROOT . self::CSS_CACHE_DIR . 'combined.css';
-            $blocks = [];
-            $currentBlock = null;
-
-            for ($index = 0; $index < $tags->count(); $index++) {
-                $cssFile = $tags->url($index);
-                if (strpos($cssFile, '?') !== false) {
-                    list($cleanCssFile,) = explode('?', $cssFile, 2);
-                } else {
-                    $cleanCssFile = $cssFile;
-                }
-
-                $breaksContiguity = $this->isExcluded($cleanCssFile, $excludeArray)
-                    || MinifierAsset::isExternalUrl($cleanCssFile);
-
-                if ($breaksContiguity) {
-                    if ($currentBlock !== null && $currentBlock['files'] !== []) {
-                        $blocks[] = $currentBlock;
-                        $currentBlock = null;
-                    }
-                    continue;
-                }
-
-                $cssPath = $this->resolvePath($cleanCssFile, $rootPath);
-                if ($cssPath === false || !file_exists($cssPath)) {
-                    if ($currentBlock !== null && $currentBlock['files'] !== []) {
-                        $blocks[] = $currentBlock;
-                        $currentBlock = null;
-                    }
-                    continue;
-                }
-
-                if (MinifierAsset::isPreMinifiedCss($cleanCssFile) && !$combineAll) {
-                    if ($currentBlock !== null && $currentBlock['files'] !== []) {
-                        $blocks[] = $currentBlock;
-                        $currentBlock = null;
-                    }
-                    continue;
-                }
-
-                if ($currentBlock !== null && in_array($cssPath, $currentBlock['processedFiles'], true)) {
-                    $currentBlock['indices'][] = $index;
-                    continue;
-                }
-
-                if ($currentBlock === null) {
-                    $currentBlock = [
-                        'files' => [],
-                        'indices' => [],
-                        'processedFiles' => [],
-                    ];
-                }
-
-                if ($this->params->get('debug', 0)) {
-                    $this->app->enqueueMessage(sprintf('Adding file to combination: %s', $cssPath), 'debug');
-                }
-
-                $currentBlock['files'][] = [
-                    'path' => $cssPath,
-                    'cleanCssFile' => $cleanCssFile,
-                ];
-                $currentBlock['indices'][] = $index;
-                $currentBlock['processedFiles'][] = $cssPath;
-            }
-
-            if ($currentBlock !== null && $currentBlock['files'] !== []) {
-                $blocks[] = $currentBlock;
-            }
+            $blocks = MinifierAssetPlan::stylesheets(
+                $rootPath,
+                array_values($excludeArray),
+                (bool) $this->params->get('combine_all_css', 0),
+                $this->logger()
+            )->blocks($tags);
 
             $cacheDirs = [];
 
@@ -340,45 +278,6 @@ class PlgSystemMinifier extends CMSPlugin
     }
 
     /**
-     * Resolves file paths considering various Joomla locations
-     * 
-     * @param string $file Original file path
-     * @param string $rootPath Joomla root path
-     * @return string|false Resolved absolute file path or false on security violation
-     */
-    protected function resolvePath(string $file, string $rootPath)
-    {
-        $resolved = MinifierAsset::resolveWebPath($file, $rootPath);
-
-        if ($resolved === false) {
-            Log::add(
-                sprintf('Security: Path traversal attempt detected: %s resolves outside root', $file),
-                Log::WARNING,
-                $this->logCategory
-            );
-        }
-
-        return $resolved;
-    }
-
-    /**
-     * Check if a file path is in the exclusion list
-     * 
-     * @param string $cssFile File path to check
-     * @param array $excludeArray Array of paths to exclude
-     * @return bool True if excluded, false otherwise
-     */
-    protected function isExcluded(string $cssFile, array $excludeArray): bool
-    {
-        foreach ($excludeArray as $excludePath) {
-            if (!empty($excludePath) && strpos($cssFile, $excludePath) !== false) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    /**
      * Cleans up old combined files, keeping only the most recent ones
      * 
      * @param string $directory Directory to clean
@@ -430,7 +329,7 @@ class PlgSystemMinifier extends CMSPlugin
     }
 
     /**
-     * @param array<int, array{path: string, cleanCssFile: string}> $files
+     * @param array<int, array{path: string, webPath: string}> $files
      */
     protected function buildCssBlockContent(array $files, string $targetPath): string
     {
@@ -440,7 +339,7 @@ class PlgSystemMinifier extends CMSPlugin
 
         $allMinifiable = !array_filter(
             $files,
-            static fn(array $file): bool => MinifierAsset::isPreMinifiedCss($file['cleanCssFile'])
+            static fn(array $file): bool => MinifierAsset::isPreMinifiedCss($file['webPath'])
         );
 
         if ($allMinifiable && count($files) > 1) {
@@ -451,7 +350,7 @@ class PlgSystemMinifier extends CMSPlugin
             }
 
             $content = $this->prefixSubdirectoryCssUrls($minifier->execute($targetPath));
-            $comment = '/* Files: ' . implode(', ', array_column($files, 'cleanCssFile')) . " */\n";
+            $comment = '/* Files: ' . implode(', ', array_column($files, 'webPath')) . " */\n";
 
             return $comment . $content . "\n";
         }
@@ -459,8 +358,8 @@ class PlgSystemMinifier extends CMSPlugin
         $content = '';
 
         foreach ($files as $file) {
-            $fileContent = $this->getCssContentForCombine($file['path'], $file['cleanCssFile'], $targetPath);
-            $content .= "/* File: {$file['cleanCssFile']} */\n" . $fileContent . "\n";
+            $fileContent = $this->getCssContentForCombine($file['path'], $file['webPath'], $targetPath);
+            $content .= "/* File: {$file['webPath']} */\n" . $fileContent . "\n";
         }
 
         return $content;
@@ -525,13 +424,13 @@ class PlgSystemMinifier extends CMSPlugin
      * Returns minified or raw CSS content with asset paths adjusted for combination
      *
      * @param string $cssPath Absolute path to the CSS file
-     * @param string $cleanCssFile Web-relative CSS file path
+     * @param string $webPath Web-relative CSS file path
      * @param string $targetPath Target combined CSS file path
      * @return string CSS content ready for combination
      */
-    protected function getCssContentForCombine(string $cssPath, string $cleanCssFile, string $targetPath): string
+    protected function getCssContentForCombine(string $cssPath, string $webPath, string $targetPath): string
     {
-        if (MinifierAsset::isPreMinifiedCss($cleanCssFile)) {
+        if (MinifierAsset::isPreMinifiedCss($webPath)) {
             $fileContent = file_get_contents($cssPath);
 
             if ($fileContent === false) {
@@ -554,19 +453,16 @@ class PlgSystemMinifier extends CMSPlugin
     }
 
     /**
-     * Builds a combined CSS cache file and registers the tag edits for one block
+     * Builds a combined CSS cache file and registers the tag edits for one planned block
      *
-     * @param array $block Combined block data with files and indices
      * @return string|null The cache directory written to, or null when nothing was combined
      */
-    protected function prepareCombinedCssBlock(MinifierHtmlReplacements $tags, array $block, string $targetPath): ?string
+    protected function prepareCombinedCssBlock(MinifierHtmlReplacements $tags, MinifierCombineBlock $block, string $targetPath): ?string
     {
         $prepared = MinifierCssAssetPaths::prepareCombinedCss(
-            $this->buildCssBlockContent($block['files'], $targetPath)
+            $this->buildCssBlockContent($block->files, $targetPath)
         );
         $combinedContent = $prepared['css'];
-        $tagsToRemove = $block['indices'];
-        $firstMatchIndex = $tagsToRemove[0];
 
         if ($combinedContent === '') {
             return null;
@@ -604,14 +500,7 @@ class PlgSystemMinifier extends CMSPlugin
             }
 
             $combinedTag .= '<link href="' . $combinedUrl . '" rel="stylesheet">';
-
-            foreach ($tagsToRemove as $index) {
-                if ($index === $firstMatchIndex) {
-                    $tags->replaceTag($index, $combinedTag);
-                } else {
-                    $tags->removeTag($index);
-                }
-            }
+            $block->placeBundle($tags, $combinedTag);
 
             return $cacheDir;
         } catch (\Exception $e) {
