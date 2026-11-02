@@ -19,31 +19,44 @@ final class MinifierAssetPlan
         array $excludePaths,
         private readonly MinifierAssetType $type,
         private readonly bool $combineAll,
-        ?\Closure $log
+        ?\Closure $log,
+        string $baseUrl
     ) {
         $this->log = $log ?? static function (string $level, string $message): void {
         };
-        $this->locator = new MinifierAssetLocator($rootPath, $excludePaths, $this->log);
+        $this->locator = new MinifierAssetLocator($rootPath, $excludePaths, $this->log, $baseUrl);
     }
 
     /**
      * @param list<string> $excludePaths URLs containing any of these substrings are never combined
      * @param bool $combineAll Whether pre-minified files are combined too
      * @param (\Closure(string $level, string $message): void)|null $log Receives 'debug' and 'warning' messages
+     * @param string $baseUrl The site's base URL path ('' at the domain root, '/sub' in a subdirectory install)
      */
-    public static function scripts(string $rootPath, array $excludePaths, bool $combineAll, ?\Closure $log = null): self
-    {
-        return new self($rootPath, $excludePaths, MinifierAssetType::Js, $combineAll, $log);
+    public static function scripts(
+        string $rootPath,
+        array $excludePaths,
+        bool $combineAll,
+        ?\Closure $log = null,
+        string $baseUrl = ''
+    ): self {
+        return new self($rootPath, $excludePaths, MinifierAssetType::Js, $combineAll, $log, $baseUrl);
     }
 
     /**
      * @param list<string> $excludePaths URLs containing any of these substrings are never combined
      * @param bool $combineAll Whether pre-minified files are combined too
      * @param (\Closure(string $level, string $message): void)|null $log Receives 'debug' and 'warning' messages
+     * @param string $baseUrl The site's base URL path ('' at the domain root, '/sub' in a subdirectory install)
      */
-    public static function stylesheets(string $rootPath, array $excludePaths, bool $combineAll, ?\Closure $log = null): self
-    {
-        return new self($rootPath, $excludePaths, MinifierAssetType::Css, $combineAll, $log);
+    public static function stylesheets(
+        string $rootPath,
+        array $excludePaths,
+        bool $combineAll,
+        ?\Closure $log = null,
+        string $baseUrl = ''
+    ): self {
+        return new self($rootPath, $excludePaths, MinifierAssetType::Css, $combineAll, $log, $baseUrl);
     }
 
     /**

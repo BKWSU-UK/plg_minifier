@@ -117,6 +117,7 @@ class PlgSystemMinifier extends CMSPlugin
         }
 
         $rootPath = str_replace('\\', '/', JPATH_ROOT);
+        $baseUrl = Uri::root(true);
         $excludePaths = $this->params->get('exclude_paths', '');
         $excludeArray = array_filter(array_map('trim', explode("\n", $excludePaths)));
 
@@ -126,14 +127,15 @@ class PlgSystemMinifier extends CMSPlugin
                 $rootPath,
                 array_values($excludeArray),
                 (bool) $this->params->get('combine_all_css', 0),
-                $this->logger()
+                $this->logger(),
+                $baseUrl
             );
 
-            return $this->combineBlocks($tags, $plan, MinifierAssetType::Css);
+            return $this->combineBlocks($tags, $plan, MinifierAssetType::Css, $baseUrl);
         }
 
         // Process individual files
-        $minifier = new MinifierSiblingMinifier($rootPath, array_values($excludeArray), $this->logger());
+        $minifier = new MinifierSiblingMinifier($rootPath, array_values($excludeArray), $this->logger(), $baseUrl);
 
         for ($index = 0; $index < $tags->count(); $index++) {
             $minifiedUrl = $minifier->minify($tags->url($index), MinifierAssetType::Css);
@@ -167,6 +169,7 @@ class PlgSystemMinifier extends CMSPlugin
         }
 
         $rootPath = str_replace('\\', '/', JPATH_ROOT);
+        $baseUrl = Uri::root(true);
         $excludePaths = $this->params->get('exclude_paths', '');
         $excludeArray = array_filter(array_map('trim', explode("\n", $excludePaths)));
 
@@ -176,14 +179,15 @@ class PlgSystemMinifier extends CMSPlugin
                 $rootPath,
                 array_values($excludeArray),
                 (bool) $this->params->get('combine_all_js', 0),
-                $this->logger()
+                $this->logger(),
+                $baseUrl
             );
 
-            return $this->combineBlocks($tags, $plan, MinifierAssetType::Js);
+            return $this->combineBlocks($tags, $plan, MinifierAssetType::Js, $baseUrl);
         }
 
         // Process individual files
-        $minifier = new MinifierSiblingMinifier($rootPath, array_values($excludeArray), $this->logger());
+        $minifier = new MinifierSiblingMinifier($rootPath, array_values($excludeArray), $this->logger(), $baseUrl);
 
         for ($index = 0; $index < $tags->count(); $index++) {
             $minifiedUrl = $minifier->minify($tags->url($index), MinifierAssetType::Js);
@@ -227,9 +231,10 @@ class PlgSystemMinifier extends CMSPlugin
     protected function combineBlocks(
         MinifierHtmlReplacements $tags,
         MinifierAssetPlan $plan,
-        MinifierAssetType $type
+        MinifierAssetType $type,
+        string $baseUrl
     ): string {
-        $cache = new MinifierBundleCache(JPATH_ROOT, Uri::root(true), $this->logger());
+        $cache = new MinifierBundleCache(JPATH_ROOT, $baseUrl, $this->logger());
         $written = false;
 
         foreach ($plan->blocks($tags) as $block) {

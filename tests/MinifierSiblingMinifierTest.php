@@ -203,4 +203,77 @@ class MinifierSiblingMinifierTest extends TestCase
             file_get_contents($this->root . '/css/fonts.min.css')
         );
     }
+
+    public function testInASubdirectoryInstallAUrlUnderTheBasePathIsMinified(): void
+    {
+        $this->write('/css/site.css', 'body { color : red ; }');
+
+        $minifier = new MinifierSiblingMinifier($this->root, baseUrl: '/sub');
+
+        $this->assertSame('/sub/css/site.min.css?v=3', $minifier->minify('/sub/css/site.css?v=3', MinifierAssetType::Css));
+        $this->assertSame('body{color:red}', file_get_contents($this->root . '/css/site.min.css'));
+    }
+
+    public function testInASubdirectoryInstallAUrlWithoutTheBasePathStillResolvesFromTheSiteRoot(): void
+    {
+        $this->write('/css/site.css', 'body { color : red ; }');
+
+        $minifier = new MinifierSiblingMinifier($this->root, baseUrl: '/sub');
+
+        $this->assertSame('/css/site.min.css', $minifier->minify('/css/site.css', MinifierAssetType::Css));
+    }
+
+    public function testOnlyAWholeBasePathSegmentIsTreatedAsTheBasePath(): void
+    {
+        mkdir($this->root . '/way/css', 0755, true);
+        $this->write('/way/css/site.css', 'body { color : red ; }');
+
+        $minifier = new MinifierSiblingMinifier($this->root, baseUrl: '/sub');
+
+        $this->assertNull($minifier->minify('/subway/css/site.css', MinifierAssetType::Css));
+        $this->assertFileDoesNotExist($this->root . '/way/css/site.min.css');
+    }
+
+    public function testInASubdirectoryInstallTraversalOutsideTheRootIsStillRefusedAndReported(): void
+    {
+        $outside = dirname($this->root) . '/' . basename($this->root) . '-outside.css';
+        file_put_contents($outside, 'body { color : red ; }');
+        $messages = [];
+        $minifier = new MinifierSiblingMinifier(
+            $this->root,
+            log: function (string $level, string $message) use (&$messages): void {
+                $messages[] = [$level, $message];
+            },
+            baseUrl: '/sub'
+        );
+
+        try {
+            // Only once the base path is stripped does this land outside the root (without
+            // stripping it would be <root>/<name>-outside.css, inside the root but missing)
+            $result = $minifier->minify('/sub/../' . basename($outside), MinifierAssetType::Css);
+        } finally {
+            unlink($outside);
+        }
+
+        $this->assertNull($result);
+        $this->assertContains('warning', array_column($messages, 0));
+    }
+
+    public function testInASubdirectoryInstallARelativeUrlStillResolvesFromTheSiteRoot(): void
+    {
+        $this->write('/css/site.css', 'body { color : red ; }');
+
+        $minifier = new MinifierSiblingMinifier($this->root, baseUrl: '/sub');
+
+        $this->assertSame('css/site.min.css', $minifier->minify('css/site.css', MinifierAssetType::Css));
+    }
+
+    public function testABaseUrlWithATrailingSlashIsTheSameBasePath(): void
+    {
+        $this->write('/css/site.css', 'body { color : red ; }');
+
+        $minifier = new MinifierSiblingMinifier($this->root, baseUrl: '/sub/');
+
+        $this->assertSame('/sub/css/site.min.css', $minifier->minify('/sub/css/site.css', MinifierAssetType::Css));
+    }
 }

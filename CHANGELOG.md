@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- Sites installed in a subdirectory (for example `https://example.com/sub/`) now have their CSS and JavaScript minified and combined. Asset URLs that include the subdirectory (`/sub/media/…`) were looked up without removing it, so no file was ever found
 - A stylesheet that declares `@charset` and then `@import`s another stylesheet no longer produces broken CSS. The minifier moved the import ahead of the charset and dropped the charset's semicolon, so the rule that followed was lost, and in a combined bundle part of the next stylesheet was moved to the top. The charset now stays first and complete, in combined bundles and in individual `.min.css` files
 - A non-stylesheet `<link>` (such as Joomla's favicon link) or a `<script src>` that is not a `.js` file no longer swallows the stylesheet or script that follows it; that next file was never minified or combined, and in combine mode it split the bundle
 - Combined JavaScript bundles inserted directly before another rewritten script tag (no whitespace between the tags) no longer corrupt the page: the inserted bundle tag was lost and the following tag truncated. Edits that share a position are now applied in a fixed order, and overlapping edits leave the page's original tags untouched and log a warning instead of producing broken HTML

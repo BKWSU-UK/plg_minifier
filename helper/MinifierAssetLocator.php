@@ -12,16 +12,22 @@ final class MinifierAssetLocator
     /** @var \Closure(string $level, string $message): void */
     private readonly \Closure $log;
 
+    /** The base URL without a trailing slash; '' for a site at the domain root */
+    private readonly string $basePath;
+
     /**
      * @param string $rootPath Site root the asset URLs resolve against
      * @param list<string> $excludePaths URLs containing any of these substrings are treated as not local
      * @param (\Closure(string $level, string $message): void)|null $log Receives 'debug' and 'warning' messages
+     * @param string $baseUrl The site's base URL path ('' at the domain root, '/sub' in a subdirectory install)
      */
     public function __construct(
         private readonly string $rootPath,
         private readonly array $excludePaths = [],
-        ?\Closure $log = null
+        ?\Closure $log = null,
+        string $baseUrl = ''
     ) {
+        $this->basePath = rtrim($baseUrl, '/');
         $this->log = $log ?? static function (string $level, string $message): void {
         };
     }
@@ -51,7 +57,7 @@ final class MinifierAssetLocator
         }
 
         [$path] = self::splitQuery($url);
-        $resolved = MinifierAsset::resolveWebPath($path, $this->rootPath);
+        $resolved = MinifierAsset::resolveWebPath($this->withoutBasePath($path), $this->rootPath);
 
         if ($resolved === false) {
             ($this->log)('warning', sprintf('Security: Path traversal attempt detected: %s resolves outside root', $path));
@@ -66,6 +72,17 @@ final class MinifierAssetLocator
         }
 
         return $resolved;
+    }
+
+    /**
+     * A path under the site's base URL (`/sub/css/a.css`) made relative to the site root
+     * (`/css/a.css`); other paths are returned unchanged
+     */
+    private function withoutBasePath(string $path): string
+    {
+        return $this->basePath !== '' && str_starts_with($path, $this->basePath . '/')
+            ? substr($path, strlen($this->basePath))
+            : $path;
     }
 
     /** Protocol-relative or http(s) URLs, any letter case */

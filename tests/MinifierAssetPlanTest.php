@@ -72,14 +72,15 @@ class MinifierAssetPlanTest extends TestCase
         string $html,
         bool $combineAll = false,
         array $excludePaths = [],
-        MinifierAssetType $type = MinifierAssetType::Js
+        MinifierAssetType $type = MinifierAssetType::Js,
+        string $baseUrl = ''
     ): array {
         [$tags, $plan, $bundle] = $type === MinifierAssetType::Js
             ? [MinifierHtmlReplacements::scripts($html), MinifierAssetPlan::scripts(...), self::bundle(...)]
             : [MinifierHtmlReplacements::stylesheets($html), MinifierAssetPlan::stylesheets(...), self::stylesheetBundle(...)];
         $bundleFiles = [];
 
-        foreach ($plan($this->root, $excludePaths, $combineAll)->blocks($tags) as $number => $block) {
+        foreach ($plan($this->root, $excludePaths, $combineAll, baseUrl: $baseUrl)->blocks($tags) as $number => $block) {
             $block->placeBundle($tags, $bundle($number));
             $bundleFiles[] = array_column($block->files, 'webPath');
         }
@@ -342,5 +343,28 @@ class MinifierAssetPlanTest extends TestCase
             ],
             $messages
         );
+    }
+
+    public function testInASubdirectoryInstallScriptsUnderTheBasePathAreCombined(): void
+    {
+        [$html, $files] = $this->combine(
+            '<script src="/sub/js/a.js"></script><script src="/sub/js/b.js?v=2"></script>',
+            baseUrl: '/sub'
+        );
+
+        $this->assertSame(self::bundle(0), $html);
+        $this->assertSame([['/sub/js/a.js', '/sub/js/b.js']], $files);
+    }
+
+    public function testInASubdirectoryInstallStylesheetsUnderTheBasePathAreCombined(): void
+    {
+        [$html, $files] = $this->combine(
+            '<link href="/sub/css/a.css" rel="stylesheet"><link href="/sub/css/b.css" rel="stylesheet">',
+            type: MinifierAssetType::Css,
+            baseUrl: '/sub'
+        );
+
+        $this->assertSame(self::stylesheetBundle(0), $html);
+        $this->assertSame([['/sub/css/a.css', '/sub/css/b.css']], $files);
     }
 }

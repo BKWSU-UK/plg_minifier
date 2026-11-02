@@ -20,12 +20,13 @@ final class MinifierSiblingMinifier
      * @param string $rootPath Site root the asset URLs resolve against
      * @param list<string> $excludePaths URLs containing any of these substrings are left alone
      * @param (\Closure(string $level, string $message): void)|null $log Receives 'debug', 'warning' and 'error' messages
+     * @param string $baseUrl The site's base URL path ('' at the domain root, '/sub' in a subdirectory install)
      */
-    public function __construct(string $rootPath, array $excludePaths = [], ?\Closure $log = null)
+    public function __construct(string $rootPath, array $excludePaths = [], ?\Closure $log = null, string $baseUrl = '')
     {
         $this->log = $log ?? static function (string $level, string $message): void {
         };
-        $this->locator = new MinifierAssetLocator($rootPath, $excludePaths, $this->log);
+        $this->locator = new MinifierAssetLocator($rootPath, $excludePaths, $this->log, $baseUrl);
     }
 
     /**
