@@ -60,7 +60,29 @@ class MinifierCssAssetPaths
             }
         }
 
-        return MinifierHtmlReplacements::apply($cssContent, $replacements);
+        return self::spliceReplacements($cssContent, $replacements);
+    }
+
+    /**
+     * Applies offset records from the end backwards so earlier offsets stay valid.
+     * The url() and quoted @import patterns never match overlapping text.
+     *
+     * @param array<int, array{offset: int, length: int, replacement: string}> $replacements
+     */
+    private static function spliceReplacements(string $cssContent, array $replacements): string
+    {
+        usort($replacements, static fn(array $a, array $b): int => $b['offset'] <=> $a['offset']);
+
+        foreach ($replacements as $replacement) {
+            $cssContent = substr_replace(
+                $cssContent,
+                $replacement['replacement'],
+                $replacement['offset'],
+                $replacement['length']
+            );
+        }
+
+        return $cssContent;
     }
 
     /**

@@ -4,67 +4,100 @@ use PHPUnit\Framework\TestCase;
 
 class MinifierHtmlReplacementsTest extends TestCase
 {
-    public function testApplyReplacesDuplicateTagsWithoutAmbiguity(): void
-    {
-        $body = '<link href="/media/a.css" rel="stylesheet"><link href="/media/a.css" rel="stylesheet">';
-        $firstLength = strlen('<link href="/media/a.css" rel="stylesheet">');
+    private const SCRIPT_PATTERN = '/<script[^>]+src=([\'"])(.*?\.js(?:\?[^"\']*)?)\1[^>]*>/i';
+    private const LINK_PATTERN = '/<link[^>]+href=([\'"])(.*?\.css(?:\?[^"\']*)?)\1[^>]*>/i';
 
-        $result = MinifierHtmlReplacements::apply($body, [
-            [
-                'offset' => $firstLength,
-                'length' => $firstLength,
-                'replacement' => '<link href="/media/a.min.css" rel="stylesheet">',
-            ],
-            [
-                'offset' => 0,
-                'length' => $firstLength,
-                'replacement' => '<link href="/media/a.min.css" rel="stylesheet">',
-            ],
-        ]);
+    private static function scripts(string $body): MinifierHtmlReplacements
+    {
+        preg_match_all(self::SCRIPT_PATTERN, $body, $matches, PREG_OFFSET_CAPTURE);
+
+        return new MinifierHtmlReplacements($body, $matches);
+    }
+
+    public function testInsertAfterTagDirectlyBeforeARemovedTagKeepsBoth(): void
+    {
+        $edits = self::scripts('<script src="/a.js"></script><script src="/b.js"></script>');
+
+        $edits->insertAfterTag(0, '<script src="/combined.js"></script>');
+        $edits->removeTag(1);
+
+        $this->assertSame('<script src="/a.js"></script><script src="/combined.js"></script>', $edits->apply());
+    }
+
+    public function testReplaceTagReplacesTheWholeScriptElementIncludingItsClosingTag(): void
+    {
+        $edits = self::scripts('<script src="/a.js"></script><script src="/b.js"></script>');
+
+        $edits->replaceTag(0, '<script src="/combined.js"></script>');
+        $edits->removeTag(1);
+
+        $this->assertSame('<script src="/combined.js"></script>', $edits->apply());
+    }
+
+    public function testReplaceUrlRewritesOnlyThatTagsUrlEvenWhenTagsAreDuplicated(): void
+    {
+        preg_match_all(
+            self::LINK_PATTERN,
+            $body = '<link href="/media/a.css?v=1" rel="stylesheet"><link href="/media/a.css?v=1" rel="stylesheet">',
+            $matches,
+            PREG_OFFSET_CAPTURE
+        );
+        $edits = new MinifierHtmlReplacements($body, $matches);
+
+        $edits->replaceUrl(1, '/media/a.min.css?v=1');
 
         $this->assertSame(
-            '<link href="/media/a.min.css" rel="stylesheet"><link href="/media/a.min.css" rel="stylesheet">',
-            $result
+            '<link href="/media/a.css?v=1" rel="stylesheet"><link href="/media/a.min.css?v=1" rel="stylesheet">',
+            $edits->apply()
         );
     }
 
-    public function testApplySupportsInsertionsAndRemovals(): void
+    public function testReplaceUrlKeepsTheScriptElementIntact(): void
     {
-        $body = '<script src="/media/a.js"></script><script src="/media/b.js"></script>';
+        $edits = self::scripts('<script src="/a.js" defer></script>');
 
-        $result = MinifierHtmlReplacements::apply($body, [
-            [
-                'offset' => strlen('<script src="/media/a.js"></script>'),
-                'length' => strlen('<script src="/media/b.js"></script>'),
-                'replacement' => '',
-            ],
-            [
-                'offset' => 0,
-                'length' => strlen('<script src="/media/a.js"></script>'),
-                'replacement' => '<script src="/media/combined.js"></script>',
-            ],
-        ]);
+        $edits->replaceUrl(0, '/a.min.js');
 
-        $this->assertSame('<script src="/media/combined.js"></script>', $result);
+        $this->assertSame('<script src="/a.min.js" defer></script>', $edits->apply());
     }
 
-    public function testExternalScriptElementLengthIncludesClosingTag(): void
+    public function testOverlappingEditsLeaveTheBodyUntouchedAndAreReported(): void
     {
-        $body = '<script src="/media/a.js"></script><script src="/media/b.js"></script>';
+        $body = '<script src="/a.js"></script><script src="/b.js"></script>';
+        $edits = self::scripts($body);
 
-        $this->assertSame(
-            strlen('<script src="/media/a.js"></script>'),
-            MinifierHtmlReplacements::externalScriptElementLength($body, 0, '<script src="/media/a.js">')
-        );
+        $edits->removeTag(0);
+        $edits->replaceUrl(0, '/a.min.js');
+        $edits->removeTag(1);
+
+        $this->assertSame($body, $edits->apply());
+        $this->assertCount(1, $edits->conflicts());
     }
 
-    public function testExternalScriptElementLengthHandlesSelfClosingOpeningTag(): void
+    public function testEditsThatOnlyTouchAtTheirEdgesDoNotConflict(): void
     {
-        $body = '<script src="/media/a.js" />';
+        $edits = self::scripts('<script src="/a.js"></script><script src="/b.js"></script>');
 
-        $this->assertSame(
-            strlen('<script src="/media/a.js" />'),
-            MinifierHtmlReplacements::externalScriptElementLength($body, 0, '<script src="/media/a.js" />')
-        );
+        $edits->removeTag(0);
+        $edits->insertAfterTag(0, '<script src="/combined.js"></script>');
+        $edits->removeTag(1);
+
+        $this->assertSame('<script src="/combined.js"></script>', $edits->apply());
+        $this->assertSame([], $edits->conflicts());
+    }
+
+    public function testTextBetweenStartsAfterTheClosingScriptTag(): void
+    {
+        $edits = self::scripts('<script src="/a.js?v=2"></script><script>init();</script><script src="/b.js"></script>');
+
+        $this->assertSame('/a.js?v=2', $edits->url(0));
+        $this->assertSame('<script>init();</script>', $edits->textBetween(0, 1));
+    }
+
+    public function testTextBetweenStartsDirectlyAfterASelfClosingScriptTag(): void
+    {
+        $edits = self::scripts('<script src="/a.js" />  <script src="/b.js"></script>');
+
+        $this->assertSame('  ', $edits->textBetween(0, 1));
     }
 }

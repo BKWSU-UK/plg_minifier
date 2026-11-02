@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- Combined JavaScript bundles inserted directly before another rewritten script tag (no whitespace between the tags) no longer corrupt the page: the inserted bundle tag was lost and the following tag truncated. Edits that share a position are now applied in a fixed order, and overlapping edits leave the page's original tags untouched and log a warning instead of producing broken HTML
+- With CSS combination off and "Combine all CSS" on, already-minified stylesheets (`*.min.css`) are no longer minified again into `*.min.min.css`
+
+### Changed
+- Individual (non-combined) minification of CSS and JavaScript now runs through one `MinifierSiblingMinifier` module, so both asset types share the same skip rules, freshness check and query-string handling
+- `MinifierHtmlReplacements` is now a tag-level edit set for one asset pass (`replaceUrl`, `replaceTag`, `removeTag`, `insertAfterTag`, `apply`, `conflicts`) that owns byte offsets and script element spans; the static `apply()` and `externalScriptElementLength()` are removed
+
 ## [1.0.20] - 2025-06-30
 
 ### Fixed
