@@ -129,53 +129,6 @@ class MinifierAsset
         return preg_match('/\bjQuery\s*\(|(?:^|[{;}])\s*\$\s*\(/m', $content) === 1;
     }
 
-    /**
-     * @param array<int, array{path: string, cleanJsFile: string}> $entries
-     */
-    public static function blockRequiresExternalJquery(array $entries): bool
-    {
-        foreach ($entries as $entry) {
-            if (self::isJqueryCore($entry['cleanJsFile'])) {
-                return false;
-            }
-        }
-
-        foreach ($entries as $entry) {
-            $content = file_get_contents($entry['path']);
-
-            if ($content !== false && self::fileContentRequiresJquery($content)) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    /**
-     * @param array<int, array{path: string, cleanJsFile: string}> $entries
-     * @return array<int, array{path: string, cleanJsFile: string}>
-     */
-    public static function sortJsCombineEntries(array $entries): array
-    {
-        usort($entries, static function (array $a, array $b): int {
-            $priority = static function (array $entry): int {
-                if (self::isJqueryCore($entry['cleanJsFile'])) {
-                    return 0;
-                }
-
-                if (self::isJqueryNoConflict($entry['cleanJsFile'])) {
-                    return 1;
-                }
-
-                return 2;
-            };
-
-            return $priority($a) <=> $priority($b);
-        });
-
-        return $entries;
-    }
-
     public static function prepareJsCombineSegment(string $fileContent): string
     {
         $fileContent = preg_replace('/\/\/#\s*sourceMappingURL=\S+/', '', $fileContent) ?? $fileContent;

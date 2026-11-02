@@ -4,19 +4,9 @@ use PHPUnit\Framework\TestCase;
 
 class MinifierHtmlReplacementsTest extends TestCase
 {
-    private const SCRIPT_PATTERN = '/<script[^>]+src=([\'"])(.*?\.js(?:\?[^"\']*)?)\1[^>]*>/i';
-    private const LINK_PATTERN = '/<link[^>]+href=([\'"])(.*?\.css(?:\?[^"\']*)?)\1[^>]*>/i';
-
-    private static function scripts(string $body): MinifierHtmlReplacements
-    {
-        preg_match_all(self::SCRIPT_PATTERN, $body, $matches, PREG_OFFSET_CAPTURE);
-
-        return new MinifierHtmlReplacements($body, $matches);
-    }
-
     public function testInsertAfterTagDirectlyBeforeARemovedTagKeepsBoth(): void
     {
-        $edits = self::scripts('<script src="/a.js"></script><script src="/b.js"></script>');
+        $edits = MinifierHtmlReplacements::scripts('<script src="/a.js"></script><script src="/b.js"></script>');
 
         $edits->insertAfterTag(0, '<script src="/combined.js"></script>');
         $edits->removeTag(1);
@@ -26,7 +16,7 @@ class MinifierHtmlReplacementsTest extends TestCase
 
     public function testReplaceTagReplacesTheWholeScriptElementIncludingItsClosingTag(): void
     {
-        $edits = self::scripts('<script src="/a.js"></script><script src="/b.js"></script>');
+        $edits = MinifierHtmlReplacements::scripts('<script src="/a.js"></script><script src="/b.js"></script>');
 
         $edits->replaceTag(0, '<script src="/combined.js"></script>');
         $edits->removeTag(1);
@@ -36,13 +26,9 @@ class MinifierHtmlReplacementsTest extends TestCase
 
     public function testReplaceUrlRewritesOnlyThatTagsUrlEvenWhenTagsAreDuplicated(): void
     {
-        preg_match_all(
-            self::LINK_PATTERN,
-            $body = '<link href="/media/a.css?v=1" rel="stylesheet"><link href="/media/a.css?v=1" rel="stylesheet">',
-            $matches,
-            PREG_OFFSET_CAPTURE
+        $edits = MinifierHtmlReplacements::stylesheets(
+            '<link href="/media/a.css?v=1" rel="stylesheet"><link href="/media/a.css?v=1" rel="stylesheet">'
         );
-        $edits = new MinifierHtmlReplacements($body, $matches);
 
         $edits->replaceUrl(1, '/media/a.min.css?v=1');
 
@@ -54,7 +40,7 @@ class MinifierHtmlReplacementsTest extends TestCase
 
     public function testReplaceUrlKeepsTheScriptElementIntact(): void
     {
-        $edits = self::scripts('<script src="/a.js" defer></script>');
+        $edits = MinifierHtmlReplacements::scripts('<script src="/a.js" defer></script>');
 
         $edits->replaceUrl(0, '/a.min.js');
 
@@ -64,7 +50,7 @@ class MinifierHtmlReplacementsTest extends TestCase
     public function testOverlappingEditsLeaveTheBodyUntouchedAndAreReported(): void
     {
         $body = '<script src="/a.js"></script><script src="/b.js"></script>';
-        $edits = self::scripts($body);
+        $edits = MinifierHtmlReplacements::scripts($body);
 
         $edits->removeTag(0);
         $edits->replaceUrl(0, '/a.min.js');
@@ -76,7 +62,7 @@ class MinifierHtmlReplacementsTest extends TestCase
 
     public function testEditsThatOnlyTouchAtTheirEdgesDoNotConflict(): void
     {
-        $edits = self::scripts('<script src="/a.js"></script><script src="/b.js"></script>');
+        $edits = MinifierHtmlReplacements::scripts('<script src="/a.js"></script><script src="/b.js"></script>');
 
         $edits->removeTag(0);
         $edits->insertAfterTag(0, '<script src="/combined.js"></script>');
@@ -88,7 +74,7 @@ class MinifierHtmlReplacementsTest extends TestCase
 
     public function testTextBetweenStartsAfterTheClosingScriptTag(): void
     {
-        $edits = self::scripts('<script src="/a.js?v=2"></script><script>init();</script><script src="/b.js"></script>');
+        $edits = MinifierHtmlReplacements::scripts('<script src="/a.js?v=2"></script><script>init();</script><script src="/b.js"></script>');
 
         $this->assertSame('/a.js?v=2', $edits->url(0));
         $this->assertSame('<script>init();</script>', $edits->textBetween(0, 1));
@@ -96,7 +82,7 @@ class MinifierHtmlReplacementsTest extends TestCase
 
     public function testTextBetweenStartsDirectlyAfterASelfClosingScriptTag(): void
     {
-        $edits = self::scripts('<script src="/a.js" />  <script src="/b.js"></script>');
+        $edits = MinifierHtmlReplacements::scripts('<script src="/a.js" />  <script src="/b.js"></script>');
 
         $this->assertSame('  ', $edits->textBetween(0, 1));
     }

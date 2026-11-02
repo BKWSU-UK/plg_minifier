@@ -10,9 +10,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - Combined JavaScript bundles inserted directly before another rewritten script tag (no whitespace between the tags) no longer corrupt the page: the inserted bundle tag was lost and the following tag truncated. Edits that share a position are now applied in a fixed order, and overlapping edits leave the page's original tags untouched and log a warning instead of producing broken HTML
 - With CSS combination off and "Combine all CSS" on, already-minified stylesheets (`*.min.css`) are no longer minified again into `*.min.min.css`
+- A combined JavaScript bundle is no longer moved past an inline `<script>` when it is placed after trailing jQuery files, so inline code that relies on the bundle keeps running after it
 
 ### Changed
 - Individual (non-combined) minification of CSS and JavaScript now runs through one `MinifierSiblingMinifier` module, so both asset types share the same skip rules, freshness check and query-string handling
+- JavaScript combination is planned by one `MinifierAssetPlan` module: the rules for which scripts can share a bundle and where the bundle tag goes are defined once instead of in three separate walks; `MinifierAsset::sortJsCombineEntries()` and `blockRequiresExternalJquery()` are removed
 - `MinifierHtmlReplacements` is now a tag-level edit set for one asset pass (`replaceUrl`, `replaceTag`, `removeTag`, `insertAfterTag`, `apply`, `conflicts`) that owns byte offsets and script element spans; the static `apply()` and `externalScriptElementLength()` are removed
 
 ## [1.0.20] - 2025-06-30

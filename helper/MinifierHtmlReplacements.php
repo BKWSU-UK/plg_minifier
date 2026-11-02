@@ -15,8 +15,28 @@ class MinifierHtmlReplacements
     /** Capture group holding the asset URL in the plugin's tag patterns */
     private const URL_GROUP = 2;
 
+    private const SCRIPT_PATTERN = '/<script[^>]+src=([\'"])(.*?\.js(?:\?[^"\']*)?)\1[^>]*>/i';
+
+    private const STYLESHEET_PATTERN = '/<link[^>]+href=([\'"])(.*?\.css(?:\?[^"\']*)?)\1[^>]*>/i';
+
     /** @var array<int, array{offset: int, length: int, replacement: string, sequence: int}> */
     private array $edits = [];
+
+    /** Every external `<script src="….js">` tag in the page */
+    public static function scripts(string $body): self
+    {
+        preg_match_all(self::SCRIPT_PATTERN, $body, $matches, PREG_OFFSET_CAPTURE);
+
+        return new self($body, $matches);
+    }
+
+    /** Every `<link href="….css">` tag in the page */
+    public static function stylesheets(string $body): self
+    {
+        preg_match_all(self::STYLESHEET_PATTERN, $body, $matches, PREG_OFFSET_CAPTURE);
+
+        return new self($body, $matches);
+    }
 
     /**
      * @param array $matches preg_match_all(..., PREG_OFFSET_CAPTURE) result;

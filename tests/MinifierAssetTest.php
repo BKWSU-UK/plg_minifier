@@ -91,26 +91,6 @@ class MinifierAssetTest extends TestCase
         $this->assertFalse(MinifierAsset::gapContainsInlineScript(''));
     }
 
-    public function testSortJsCombineEntriesPlacesJqueryBeforeDependents(): void
-    {
-        $entries = [
-            ['path' => '/var/www/templates/ism/js/template.min.js', 'cleanJsFile' => '/templates/ism/js/template.min.js'],
-            ['path' => '/var/www/media/vendor/jquery/js/jquery.min.js', 'cleanJsFile' => '/media/vendor/jquery/js/jquery.min.js'],
-            ['path' => '/var/www/templates/ism/js/bootstrap.bundle.min.js', 'cleanJsFile' => '/templates/ism/js/bootstrap.bundle.min.js'],
-            ['path' => '/var/www/media/legacy/js/jquery-noconflict.min.js', 'cleanJsFile' => '/media/legacy/js/jquery-noconflict.min.js'],
-        ];
-
-        $sorted = MinifierAsset::sortJsCombineEntries($entries);
-        $order = array_column($sorted, 'cleanJsFile');
-
-        $this->assertSame('/media/vendor/jquery/js/jquery.min.js', $order[0]);
-        $this->assertSame('/media/legacy/js/jquery-noconflict.min.js', $order[1]);
-        $this->assertGreaterThan(
-            array_search('/media/legacy/js/jquery-noconflict.min.js', $order, true),
-            array_search('/templates/ism/js/template.min.js', $order, true)
-        );
-    }
-
     public function testFileContentRequiresJqueryDetectsTemplateUsage(): void
     {
         $this->assertTrue(
@@ -122,30 +102,5 @@ class MinifierAssetTest extends TestCase
         $this->assertFalse(
             MinifierAsset::fileContentRequiresJquery('function $(t,e){return t+e;}')
         );
-    }
-
-    public function testBlockRequiresExternalJqueryWhenTemplateUsesJqueryWithoutCore(): void
-    {
-        $templatePath = sys_get_temp_dir() . '/minifier-template-test.js';
-        file_put_contents($templatePath, 'jQuery(document).ready(function(){});');
-
-        $entries = [
-            ['path' => '/var/www/templates/ism/js/bootstrap.bundle.min.js', 'cleanJsFile' => '/templates/ism/js/bootstrap.bundle.min.js'],
-            ['path' => $templatePath, 'cleanJsFile' => '/templates/ism/js/template.min.js'],
-        ];
-
-        $this->assertTrue(MinifierAsset::blockRequiresExternalJquery($entries));
-
-        @unlink($templatePath);
-    }
-
-    public function testBlockRequiresExternalJqueryIsFalseWhenJqueryIncluded(): void
-    {
-        $entries = [
-            ['path' => '/var/www/media/vendor/jquery/js/jquery.min.js', 'cleanJsFile' => '/media/vendor/jquery/js/jquery.min.js'],
-            ['path' => '/var/www/templates/ism/js/template.min.js', 'cleanJsFile' => '/templates/ism/js/template.min.js'],
-        ];
-
-        $this->assertFalse(MinifierAsset::blockRequiresExternalJquery($entries));
     }
 }

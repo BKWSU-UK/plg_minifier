@@ -14,18 +14,18 @@ final class MinifierSiblingMinifier
     /** @var \Closure(string $level, string $message): void */
     private readonly \Closure $log;
 
+    private readonly MinifierAssetLocator $locator;
+
     /**
      * @param string $rootPath Site root the asset URLs resolve against
      * @param list<string> $excludePaths URLs containing any of these substrings are left alone
      * @param (\Closure(string $level, string $message): void)|null $log Receives 'debug', 'warning' and 'error' messages
      */
-    public function __construct(
-        private readonly string $rootPath,
-        private readonly array $excludePaths = [],
-        ?\Closure $log = null
-    ) {
+    public function __construct(string $rootPath, array $excludePaths = [], ?\Closure $log = null)
+    {
         $this->log = $log ?? static function (string $level, string $message): void {
         };
+        $this->locator = new MinifierAssetLocator($rootPath, $excludePaths, $this->log);
     }
 
     /**
@@ -34,23 +34,15 @@ final class MinifierSiblingMinifier
      */
     public function minify(string $url, MinifierAssetType $type): ?string
     {
-        [$path, $query] = self::splitQuery($url);
+        [$path, $query] = MinifierAssetLocator::splitQuery($url);
 
-        if ($this->isExcluded($path) || MinifierAsset::isExternalUrl($path) || $type->isPreMinified($path)) {
+        if ($type->isPreMinified($path)) {
             return null;
         }
 
-        $sourcePath = MinifierAsset::resolveWebPath($path, $this->rootPath);
+        $sourcePath = $this->locator->locate($path);
 
-        if ($sourcePath === false) {
-            ($this->log)('warning', sprintf('Security: Path traversal attempt detected: %s resolves outside root', $path));
-
-            return null;
-        }
-
-        if (!is_file($sourcePath)) {
-            ($this->log)('debug', sprintf('%s file not found: %s', strtoupper($type->value), $sourcePath));
-
+        if ($sourcePath === null) {
             return null;
         }
 
@@ -77,29 +69,6 @@ final class MinifierSiblingMinifier
         }
 
         return self::siblingOf($path, $type) . $query;
-    }
-
-    private function isExcluded(string $path): bool
-    {
-        foreach ($this->excludePaths as $excludePath) {
-            if ($excludePath !== '' && str_contains($path, $excludePath)) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    /**
-     * @return array{0: string, 1: string} The path and the query string including its leading "?" (or "")
-     */
-    private static function splitQuery(string $url): array
-    {
-        $position = strpos($url, '?');
-
-        return $position === false
-            ? [$url, '']
-            : [substr($url, 0, $position), substr($url, $position)];
     }
 
     /** `dir/name.ext` → `dir/name.min.<type>` */
