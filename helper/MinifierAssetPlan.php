@@ -227,13 +227,19 @@ final class MinifierAssetPlan
     }
 
     /**
-     * Whether nothing between two neighbouring tags stops them sharing a bundle:
-     * for scripts, an inline <script> in between must keep running between them.
+     * Whether nothing between two neighbouring tags stops them sharing a bundle: for
+     * scripts, an inline <script> in between must keep running between them; for
+     * stylesheets, styles the combiner does not track (an inline <style>, or a
+     * stylesheet <link> it cannot combine) must keep their place in the cascade.
      */
     private function isContiguous(MinifierHtmlReplacements $tags, int $previousIndex, int $index): bool
     {
-        return $this->type !== MinifierAssetType::Js
-            || !self::containsInlineScript($tags->textBetween($previousIndex, $index));
+        $between = $tags->textBetween($previousIndex, $index);
+
+        return match ($this->type) {
+            MinifierAssetType::Js => !self::containsInlineScript($between),
+            MinifierAssetType::Css => !self::containsUntrackedStyles($between),
+        };
     }
 
     /**
@@ -270,6 +276,20 @@ final class MinifierAssetPlan
     private static function callsJquery(string $code): bool
     {
         return preg_match('/\bjQuery\s*\(|(?:^|[{;}])\s*\$\s*\(/m', $code) === 1;
+    }
+
+    /**
+     * Markup containing an inline `<style>` element or a `<link>` whose `rel` attribute has
+     * the `stylesheet` token (quoted among other tokens, or unquoted on its own)
+     */
+    private static function containsUntrackedStyles(string $html): bool
+    {
+        return preg_match(
+            '/<style(?=[\s>\/])'
+            . '|<link\b[^>]*(?<![\w-])rel\s*=\s*'
+            . '(?:"(?:[^"]*\s)?stylesheet(?:\s[^"]*)?"|\'(?:[^\']*\s)?stylesheet(?:\s[^\']*)?\'|stylesheet(?=[\s>\/]))/i',
+            $html
+        ) === 1;
     }
 
     /** Markup containing a `<script>` without a `src` attribute */

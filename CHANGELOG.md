@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- Combining CSS no longer changes which rules win around styles it does not combine. An inline `<style>` block, or a stylesheet `<link>` it cannot combine (such as Google Fonts), between two stylesheets now splits the bundle, so each stylesheet keeps its place in the cascade
 - A page that needs more than 5 combined bundles of one type no longer links bundles that were deleted while it was being rendered. Old bundles are still pruned, keeping the 5 most recent, but a bundle the page being rendered uses is never deleted
 - Sites installed in a subdirectory (for example `https://example.com/sub/`) now have their CSS and JavaScript minified and combined. Asset URLs that include the subdirectory (`/sub/media/…`) were looked up without removing it, so no file was ever found
 - A stylesheet that declares `@charset` and then `@import`s another stylesheet no longer produces broken CSS. The minifier moved the import ahead of the charset and dropped the charset's semicolon, so the rule that followed was lost, and in a combined bundle part of the next stylesheet was moved to the top. The charset now stays first and complete, in combined bundles and in individual `.min.css` files

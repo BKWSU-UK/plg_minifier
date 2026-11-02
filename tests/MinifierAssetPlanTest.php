@@ -367,4 +367,54 @@ class MinifierAssetPlanTest extends TestCase
         $this->assertSame(self::stylesheetBundle(0), $html);
         $this->assertSame([['/sub/css/a.css', '/sub/css/b.css']], $files);
     }
+
+    public static function styleMarkupBetweenStylesheets(): array
+    {
+        return [
+            'inline style' => ['<style>p { color: blue; }</style>'],
+            'inline style with attributes, upper case' => ['<STYLE media="screen">p { color: blue; }</STYLE>'],
+            'untracked stylesheet link' => ['<link href="https://fonts.googleapis.com/css2?family=Fraunces&display=swap" rel="stylesheet">'],
+            'untracked stylesheet link, single-quoted rel' => ["<link rel='stylesheet' href='/index.php?option=com_custom&format=css'>"],
+        ];
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('styleMarkupBetweenStylesheets')]
+    public function testStylesTheCombinerDoesNotTrackSplitTheBlockAndKeepTheirPlaceInTheCascade(string $styles): void
+    {
+        [$html, $files] = $this->combine(
+            self::stylesheet('a.css') . $styles . self::stylesheet('b.css'),
+            type: MinifierAssetType::Css
+        );
+
+        $this->assertSame(self::stylesheetBundle(0) . $styles . self::stylesheetBundle(1), $html);
+        $this->assertSame([['/css/a.css'], ['/css/b.css']], $files);
+    }
+
+    public function testMarkupThatAddsNoStylesDoesNotSplitAStylesheetBlock(): void
+    {
+        $between = "\n  <!-- template styles -->\n"
+            . '<meta name="viewport" content="width=device-width">'
+            . '<link href="/media/images/favicon.svg" rel="icon">'
+            . '<link rel="preconnect" href="https://fonts.gstatic.com">'
+            . '<link rel="preload" href="/fonts/a.woff2" as="font">'
+            . '<link data-rel="stylesheet" href="/x">'
+            . '<link rel=icon href=/img/stylesheet.png>'
+            . '<link rel="x-stylesheet" href="/y">'
+            . '<style-guide></style-guide>';
+
+        [$html, $files] = $this->combine(
+            self::stylesheet('a.css') . $between . self::stylesheet('b.css'),
+            type: MinifierAssetType::Css
+        );
+
+        $this->assertSame(self::stylesheetBundle(0) . $between, $html);
+        $this->assertSame([['/css/a.css', '/css/b.css']], $files);
+    }
+
+    public function testAnInlineStyleDoesNotSplitAScriptBlock(): void
+    {
+        [$html] = $this->combine(self::script('a.js') . '<style>p { color: blue; }</style>' . self::script('b.js'));
+
+        $this->assertSame('<style>p { color: blue; }</style>' . self::bundle(0), $html);
+    }
 }
