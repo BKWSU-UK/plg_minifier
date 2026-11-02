@@ -184,28 +184,91 @@ class MinifierBundleCacheTest extends TestCase
         $this->assertDirectoryDoesNotExist($this->root . '/media/cache');
     }
 
-    public function testPruningKeepsTheFiveMostRecentlyWrittenBundlesOfThatType(): void
+    /**
+     * Writes one JS bundle per name in its own cache instance (a separate pass) and
+     * stamps each with the given age in seconds
+     *
+     * @param array<string, int> $agesByName Script name => age of its bundle in seconds
+     * @return list<string> Bundle file names, in the order given
+     */
+    private function writeBundles(MinifierBundleCache $cache, array $agesByName): array
     {
-        $cache = $this->cache();
         $written = [];
 
-        for ($n = 1; $n <= 7; $n++) {
-            $this->write("/js/f$n.js", "var f$n = $n ;");
-            $written[] = basename($cache->write($this->files("/js/f$n.js"), MinifierAssetType::Js)->url);
-            touch($this->root . '/media/cache/js/' . end($written), time() - 100 + $n);
+        foreach ($agesByName as $name => $age) {
+            $this->write("/js/$name.js", "var $name = 1 ;");
+            $written[] = basename($cache->write($this->files("/js/$name.js"), MinifierAssetType::Js)->url);
+            touch($this->root . '/media/cache/js/' . end($written), time() - $age);
         }
 
-        $this->write('/css/a.css', 'a { color: red; }');
-        $css = basename($cache->write($this->files('/css/a.css'), MinifierAssetType::Css)->url);
+        return $written;
+    }
 
-        $cache->prune(MinifierAssetType::Js);
-
+    /** @return list<string> */
+    private function keptJsBundles(): array
+    {
         $kept = array_map('basename', glob($this->root . '/media/cache/js/combined-*.js'));
         sort($kept);
-        $expected = array_slice($written, 2);
+
+        return $kept;
+    }
+
+    public function testPruningKeepsTheFiveNewestBundlesWhenAPassWritesFewer(): void
+    {
+        $earlier = $this->writeBundles($this->cache(), ['f1' => 107, 'f2' => 106, 'f3' => 105, 'f4' => 104, 'f5' => 103, 'f6' => 102, 'f7' => 101]);
+        $this->write('/css/a.css', 'a { color: red; }');
+        $css = basename($this->cache()->write($this->files('/css/a.css'), MinifierAssetType::Css)->url);
+
+        $pass = $this->cache();
+        $current = $this->writeBundles($pass, ['g1' => 0]);
+        $pass->prune(MinifierAssetType::Js);
+
+        $expected = [...$current, ...array_slice($earlier, 3)];
         sort($expected);
-        $this->assertSame($expected, $kept);
+        $this->assertSame($expected, $this->keptJsBundles());
         $this->assertFileExists($this->root . '/media/cache/css/' . $css);
+    }
+
+    public function testPruningNeverDeletesABundleWrittenInThisPassButStillPrunesOlderOnes(): void
+    {
+        $this->writeBundles($this->cache(), ['old1' => 300, 'old2' => 200]);
+        $this->write('/css/a.css', 'a { color: red; }');
+        $css = basename($this->cache()->write($this->files('/css/a.css'), MinifierAssetType::Css)->url);
+
+        $pass = $this->cache();
+        $current = $this->writeBundles($pass, ['p1' => 7, 'p2' => 6, 'p3' => 5, 'p4' => 4, 'p5' => 3, 'p6' => 2, 'p7' => 1]);
+        $pass->prune(MinifierAssetType::Js);
+
+        sort($current);
+        $this->assertSame($current, $this->keptJsBundles());
+        $this->assertFileExists($this->root . '/media/cache/css/' . $css);
+    }
+
+    public function testAPassThatWritesExactlyFiveBundlesKeepsOnlyThose(): void
+    {
+        $this->writeBundles($this->cache(), ['old1' => 300, 'old2' => 200, 'old3' => 100]);
+
+        $pass = $this->cache();
+        $current = $this->writeBundles($pass, ['p1' => 5, 'p2' => 4, 'p3' => 3, 'p4' => 2, 'p5' => 1]);
+        $pass->prune(MinifierAssetType::Js);
+
+        sort($current);
+        $this->assertSame($current, $this->keptJsBundles());
+    }
+
+    public function testABundleRewrittenInThisPassCountsAsCurrent(): void
+    {
+        $earlier = $this->writeBundles($this->cache(), ['reused' => 300, 'e2' => 290, 'e3' => 280]);
+
+        // This pass writes the reused bundle again (same content, same name) and five new ones;
+        // the reused one is the oldest of the six, so "newest five" alone would delete it
+        $pass = $this->cache();
+        $current = $this->writeBundles($pass, ['reused' => 60, 'n1' => 5, 'n2' => 4, 'n3' => 3, 'n4' => 2, 'n5' => 1]);
+        $pass->prune(MinifierAssetType::Js);
+
+        $this->assertSame($earlier[0], $current[0]);
+        sort($current);
+        $this->assertSame($current, $this->keptJsBundles());
     }
 
     private const FONTS_CSS = "@charset \"utf-8\";\n@import url(\"https://fonts.example.com/css?family=A\");\nbody { font-family: A; }\n";

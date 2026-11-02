@@ -13,8 +13,11 @@ use MatthiasMullie\Minify;
  */
 final class MinifierBundleCache
 {
-    /** Number of most recent bundles kept per asset type */
+    /** prune() keeps this many most recent bundles per asset type; bundles written by this instance are never deleted */
     private const KEEP = 5;
+
+    /** @var array<string, array<string, true>> Bundle file names written by this instance, keyed by asset type value */
+    private array $writtenNames = [];
 
     /** @var \Closure(string $level, string $message): void */
     private readonly \Closure $log;
@@ -70,6 +73,7 @@ final class MinifierBundleCache
             return null;
         }
 
+        $this->writtenNames[$type->value][$filename] = true;
         ($this->log)('info', sprintf('Created combined %s file: %s', $label, $filename));
 
         return new MinifierBundle(
@@ -80,7 +84,8 @@ final class MinifierBundleCache
     }
 
     /**
-     * Deletes all but the most recently written bundles of one asset type
+     * Deletes old bundles of one asset type: keeps the most recently written ones, and
+     * never deletes a bundle this instance wrote, since the page being rendered links it
      */
     public function prune(MinifierAssetType $type): void
     {
@@ -92,7 +97,13 @@ final class MinifierBundleCache
 
         usort($bundles, static fn(string $a, string $b): int => filemtime($b) <=> filemtime($a));
 
+        $current = $this->writtenNames[$type->value] ?? [];
+
         foreach (array_slice($bundles, self::KEEP) as $bundle) {
+            if (isset($current[basename($bundle)])) {
+                continue;
+            }
+
             if (!@unlink($bundle)) {
                 ($this->log)('warning', 'Failed to delete old combined file: ' . $bundle);
             }
