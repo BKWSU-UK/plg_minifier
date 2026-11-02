@@ -12,11 +12,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - With CSS combination off and "Combine all CSS" on, already-minified stylesheets (`*.min.css`) are no longer minified again into `*.min.min.css`
 - A combined JavaScript bundle is no longer moved past an inline `<script>` when it is placed after trailing jQuery files, so inline code that relies on the bundle keeps running after it
 - With debug mode on, CSS combination no longer shows "Adding file to combination" messages (including server file paths) to site visitors; they go to the plugin's debug log instead, for JavaScript combination too
+- A file that cannot be read, or a minifier error, while building a combined bundle no longer aborts the page render; it is logged and that block's tags are left as they were
+- A UTF-8 BOM at the start of a pre-minified JavaScript file is no longer copied into the middle of a combined bundle (pre-minified CSS already had this)
 
 ### Changed
 - Individual (non-combined) minification of CSS and JavaScript now runs through one `MinifierSiblingMinifier` module, so both asset types share the same skip rules, freshness check and query-string handling
 - JavaScript combination is planned by one `MinifierAssetPlan` module: the rules for which scripts can share a bundle and where the bundle tag goes are defined once instead of in three separate walks; `MinifierAsset::sortJsCombineEntries()` and `blockRequiresExternalJquery()` are removed
 - CSS combination uses the same `MinifierAssetPlan` as JavaScript, so both asset types share one definition of which files can be combined; stylesheet bundles still take the place of the block's first tag, keeping the cascade order
+- Combined bundles for both asset types are built, written and pruned by one `MinifierBundleCache` module that takes the site root and base URL as values instead of reading Joomla globals
 - `MinifierHtmlReplacements` is now a tag-level edit set for one asset pass (`replaceUrl`, `replaceTag`, `removeTag`, `insertAfterTag`, `apply`, `conflicts`) that owns byte offsets and script element spans; the static `apply()` and `externalScriptElementLength()` are removed
 
 ## [1.0.20] - 2025-06-30

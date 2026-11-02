@@ -83,7 +83,7 @@ final class MinifierAssetPlan
 
             // A file already in this bundle: drop the repeated tag, bundle the file once
             if (!in_array($path, array_column($files, 'path'), true)) {
-                $files[] = ['path' => $path, 'webPath' => self::webPath($tags, $index)];
+                $files[] = new MinifierBundleFile($path, self::webPath($tags, $index));
                 ($this->log)('debug', 'Adding file to combination: ' . $path);
             }
 
@@ -106,7 +106,7 @@ final class MinifierAssetPlan
      * at the first tag that breaks contiguity, such as an inline <script> in between.
      *
      * @param list<int> $indices The block's tags, in page order
-     * @param list<array{path: string, webPath: string}> $files
+     * @param list<MinifierBundleFile> $files
      */
     private function anchorIndex(MinifierHtmlReplacements $tags, array $indices, array $files): int
     {
@@ -169,18 +169,18 @@ final class MinifierAssetPlan
     /**
      * A bundle without jQuery core whose code calls jQuery
      *
-     * @param list<array{path: string, webPath: string}> $files
+     * @param list<MinifierBundleFile> $files
      */
     private static function requiresExternalJquery(array $files): bool
     {
         foreach ($files as $file) {
-            if (MinifierAsset::isJqueryCore($file['webPath'])) {
+            if (MinifierAsset::isJqueryCore($file->webPath)) {
                 return false;
             }
         }
 
         foreach ($files as $file) {
-            $content = file_get_contents($file['path']);
+            $content = file_get_contents($file->path);
 
             if ($content !== false && MinifierAsset::fileContentRequiresJquery($content)) {
                 return true;
@@ -193,8 +193,8 @@ final class MinifierAssetPlan
     /**
      * Scripts load jQuery core first, then jQuery noConflict, then the rest in page order
      *
-     * @param list<array{path: string, webPath: string}> $files
-     * @return list<array{path: string, webPath: string}>
+     * @param list<MinifierBundleFile> $files
+     * @return list<MinifierBundleFile>
      */
     private function inBundleOrder(array $files): array
     {
@@ -202,13 +202,13 @@ final class MinifierAssetPlan
             return $files;
         }
 
-        $priority = static fn(array $file): int => match (true) {
-            MinifierAsset::isJqueryCore($file['webPath']) => 0,
-            MinifierAsset::isJqueryNoConflict($file['webPath']) => 1,
+        $priority = static fn(MinifierBundleFile $file): int => match (true) {
+            MinifierAsset::isJqueryCore($file->webPath) => 0,
+            MinifierAsset::isJqueryNoConflict($file->webPath) => 1,
             default => 2,
         };
 
-        usort($files, static fn(array $a, array $b): int => $priority($a) <=> $priority($b));
+        usort($files, static fn(MinifierBundleFile $a, MinifierBundleFile $b): int => $priority($a) <=> $priority($b));
 
         return $files;
     }
@@ -245,13 +245,29 @@ final class MinifierAssetPlan
 }
 
 /**
+ * One file of a bundle: where it is on disk and the web path it was linked as.
+ */
+final class MinifierBundleFile
+{
+    /**
+     * @param string $path Absolute filesystem path
+     * @param string $webPath The page's URL for the file, without its query string
+     */
+    public function __construct(
+        public readonly string $path,
+        public readonly string $webPath
+    ) {
+    }
+}
+
+/**
  * One planned bundle: the tags it replaces, its files in bundle order, and its anchor tag.
  */
 final class MinifierCombineBlock
 {
     /**
      * @param list<int> $tagIndices Every tag the bundle replaces, in page order
-     * @param list<array{path: string, webPath: string}> $files Bundle files in load order
+     * @param list<MinifierBundleFile> $files Bundle files in load order
      * @param int $anchorIndex The bundle tag replaces this tag when it is a member, otherwise goes right after it
      */
     public function __construct(
