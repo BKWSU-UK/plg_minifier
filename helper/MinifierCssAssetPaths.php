@@ -8,6 +8,14 @@ use MatthiasMullie\PathConverter\Converter;
 class MinifierCssAssetPaths
 {
     /**
+     * A real `@charset` rule: exactly `@charset "…"` (the only form CSS treats as an encoding
+     * declaration) at a rule boundary, so text inside strings and url()s never matches.
+     * Its `;` may be missing in minifier output. Group 1 is the whitespace before the rule,
+     * which removal puts back; group 2 is the encoding.
+     */
+    private const CHARSET_PATTERN = '/(?:^|(?<=[;{}])|(?<=\*\/))(\s*)@charset "([^"]*)"(?:\s*;)?/';
+
+    /**
      * Replaces relative url() and @import paths using the path converter
      */
     public static function replaceRelativePaths(string $cssContent, Converter $converter): string
@@ -79,6 +87,22 @@ class MinifierCssAssetPaths
     }
 
     /**
+     * Repairs minifier output in which `@import` rules were moved ahead of `@charset`
+     * and the semicolon ending the charset was consumed with them (the minifier's
+     * import hoisting also takes the `;` just before each `@import`). Puts the first
+     * `@charset` back at the very start, complete, and drops any others. CSS without
+     * `@charset` is returned unchanged.
+     */
+    public static function repairMinifiedCharset(string $css): string
+    {
+        if (preg_match(self::CHARSET_PATTERN, $css, $match) !== 1) {
+            return $css;
+        }
+
+        return '@charset "' . $match[2] . '";' . preg_replace(self::CHARSET_PATTERN, '$1', $css);
+    }
+
+    /**
      * Prefixes root-relative CSS asset URLs with the Joomla base path
      */
     public static function prefixSubdirectoryPaths(string $cssContent, string $base): string
@@ -131,12 +155,9 @@ class MinifierCssAssetPaths
         $localImports = [];
         $body = $cssContent;
 
-        while (preg_match('/@charset\s+[^;]+;/i', $body, $match, PREG_OFFSET_CAPTURE) === 1) {
-            if ($charset === '') {
-                $charset = trim($match[0][0]);
-            }
-
-            $body = substr_replace($body, '', $match[0][1], strlen($match[0][0]));
+        if (preg_match(self::CHARSET_PATTERN, $body, $match) === 1) {
+            $charset = '@charset "' . $match[2] . '";';
+            $body = preg_replace(self::CHARSET_PATTERN, '$1', $body);
         }
 
         while (preg_match(

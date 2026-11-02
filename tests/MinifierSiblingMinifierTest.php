@@ -191,4 +191,16 @@ class MinifierSiblingMinifierTest extends TestCase
         $this->assertNull((new MinifierSiblingMinifier($this->root))->minify('/js/LIB.MIN.JS', MinifierAssetType::Js));
         $this->assertSame([], glob($this->root . '/js/*.min.js'));
     }
+
+    public function testAMinifiedStylesheetKeepsItsCharsetFirstAndCompleteWhenItHasAnImport(): void
+    {
+        $this->write('/css/fonts.css', "@charset \"utf-8\";\n@import url(\"https://fonts.example.com/css?family=A\");\nbody { font-family: A; }\n");
+
+        (new MinifierSiblingMinifier($this->root))->minify('/css/fonts.css', MinifierAssetType::Css);
+
+        $this->assertSame(
+            '@charset "utf-8";@import url(https://fonts.example.com/css?family=A);body{font-family:A}',
+            file_get_contents($this->root . '/css/fonts.min.css')
+        );
+    }
 }

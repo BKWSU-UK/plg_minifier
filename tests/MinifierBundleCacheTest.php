@@ -207,4 +207,90 @@ class MinifierBundleCacheTest extends TestCase
         $this->assertSame($expected, $kept);
         $this->assertFileExists($this->root . '/media/cache/css/' . $css);
     }
+
+    private const FONTS_CSS = "@charset \"utf-8\";\n@import url(\"https://fonts.example.com/css?family=A\");\nbody { font-family: A; }\n";
+
+    public function testACharsetStaysFirstAndCompleteWhenAnExternalImportIsExtracted(): void
+    {
+        $this->write('/css/fonts.css', self::FONTS_CSS);
+
+        $bundle = $this->cache()->write($this->files('/css/fonts.css'), MinifierAssetType::Css);
+        $content = $this->contentAt($bundle->url);
+
+        $this->assertStringStartsWith('@charset "utf-8";', $content);
+        $this->assertStringContainsString('body{font-family:A}', $content);
+        $this->assertStringNotContainsString('@import', $content);
+        $this->assertSame(['https://fonts.example.com/css?family=A'], $bundle->externalImports);
+    }
+
+    public function testACharsetWithAnImportDoesNotSwallowRulesFromTheNextStylesheet(): void
+    {
+        $this->write('/css/fonts.css', self::FONTS_CSS);
+        $this->write('/css/b.css', 'p { margin: 0; color: red; }');
+
+        $bundle = $this->cache()->write($this->files('/css/fonts.css', '/css/b.css'), MinifierAssetType::Css);
+        $content = $this->contentAt($bundle->url);
+
+        $this->assertStringStartsWith('@charset "utf-8";', $content);
+        $this->assertStringContainsString('body{font-family:A}', $content);
+        $this->assertStringContainsString('p{margin:0;color:red}', $content);
+        $this->assertSame(1, substr_count($content, '@charset'));
+    }
+
+    public function testACharsetStaysFirstAndCompleteWithALocalImport(): void
+    {
+        $this->write('/css/local.css', "@charset \"utf-8\";\n@import url(\"/css/base.css\");\nbody { color: red; }\n");
+
+        $content = $this->contentAt($this->cache()->write($this->files('/css/local.css'), MinifierAssetType::Css)->url);
+
+        $this->assertStringStartsWith('@charset "utf-8";' . "\n" . '@import', $content);
+        $this->assertStringContainsString('body{color:red}', $content);
+    }
+
+    public static function charsetTextInStrings(): array
+    {
+        return [
+            'in a content string' => ['p:before { content: "@charset \'x\'"; }', 'content:"@charset \'x\'"'],
+            'in a data URL' => [
+                "@charset \"utf-8\";\ndiv { background: url(\"data:text/css,@charset 'x';\"); }",
+                "url(\"data:text/css,@charset 'x';\")",
+            ],
+        ];
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('charsetTextInStrings')]
+    public function testCharsetTextInsideAStringIsLeftAlone(string $css, string $kept): void
+    {
+        $this->write('/css/s.css', $css);
+
+        $content = $this->contentAt($this->cache()->write($this->files('/css/s.css'), MinifierAssetType::Css)->url);
+
+        $this->assertStringContainsString($kept, $content);
+        $this->assertLessThanOrEqual(1, substr_count($content, '@charset "'));
+    }
+
+    public function testOnlyALowerCaseDoubleQuotedCharsetIsTreatedAsACharset(): void
+    {
+        $this->write('/css/u.css', "@CHARSET 'utf-8';\nbody { color: red; }");
+
+        $content = $this->contentAt($this->cache()->write($this->files('/css/u.css'), MinifierAssetType::Css)->url);
+
+        $this->assertStringNotContainsString('@charset "', $content);
+        $this->assertStringContainsString("@CHARSET 'utf-8'", $content);
+    }
+
+    public function testACharsetWithoutAnImportIsBundledAsBefore(): void
+    {
+        $this->write('/css/c.css', "@charset \"utf-8\";\nbody { color: red; }\n");
+        $this->write('/css/d.css', "p { margin: 0; }\n");
+        $cache = $this->cache();
+
+        // Expected content and names recorded from the bundle cache before the charset repair existed
+        $single = $cache->write($this->files('/css/c.css'), MinifierAssetType::Css);
+        $this->assertSame('/media/cache/css/combined-b5c27197.css', $single->url);
+        $this->assertSame("@charset \"utf-8\";\n/* File: /css/c.css */\nbody{color:red}\n", $this->contentAt($single->url));
+
+        $multi = $cache->write($this->files('/css/c.css', '/css/d.css'), MinifierAssetType::Css);
+        $this->assertSame('/media/cache/css/combined-7dfa2313.css', $multi->url);
+    }
 }

@@ -56,7 +56,15 @@ final class MinifierSiblingMinifier
 
         if (!is_file($siblingPath) || filemtime($sourcePath) > filemtime($siblingPath)) {
             try {
-                $type->minifier($sourcePath)->minify($siblingPath);
+                $minified = $type->minifier($sourcePath)->execute($siblingPath);
+
+                if ($type === MinifierAssetType::Css) {
+                    $minified = MinifierCssAssetPaths::repairMinifiedCharset($minified);
+                }
+
+                if (@file_put_contents($siblingPath, $minified) === false) {
+                    throw new \RuntimeException('Failed to write ' . $siblingPath);
+                }
             } catch (\Exception $e) {
                 ($this->log)('error', sprintf('%s minification failed: %s for file: %s', strtoupper($type->value), $e->getMessage(), $url));
 

@@ -123,7 +123,7 @@ final class MinifierBundleCache
             }
 
             $content = '/* Files: ' . implode(', ', array_column($files, 'webPath')) . " */\n"
-                . MinifierCssAssetPaths::prefixSubdirectoryPaths($minifier->execute($targetPath), $this->baseUrl) . "\n";
+                . $this->minified($minifier, $targetPath) . "\n";
         } else {
             $content = '';
 
@@ -156,7 +156,16 @@ final class MinifierBundleCache
         $minifier = new Minify\CSS();
         $minifier->addFile($file->path);
 
-        return MinifierCssAssetPaths::prefixSubdirectoryPaths($minifier->execute($targetPath), $this->baseUrl);
+        return $this->minified($minifier, $targetPath);
+    }
+
+    /** Minified CSS with its charset repaired and root-relative URLs prefixed with the base URL */
+    private function minified(Minify\CSS $minifier, string $targetPath): string
+    {
+        return MinifierCssAssetPaths::prefixSubdirectoryPaths(
+            MinifierCssAssetPaths::repairMinifiedCharset($minifier->execute($targetPath)),
+            $this->baseUrl
+        );
     }
 
     /**
