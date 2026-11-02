@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- A non-stylesheet `<link>` (such as Joomla's favicon link) or a `<script src>` that is not a `.js` file no longer swallows the stylesheet or script that follows it; that next file was never minified or combined, and in combine mode it split the bundle
 - Combined JavaScript bundles inserted directly before another rewritten script tag (no whitespace between the tags) no longer corrupt the page: the inserted bundle tag was lost and the following tag truncated. Edits that share a position are now applied in a fixed order, and overlapping edits leave the page's original tags untouched and log a warning instead of producing broken HTML
 - With CSS combination off and "Combine all CSS" on, already-minified stylesheets (`*.min.css`) are no longer minified again into `*.min.min.css`
 - A combined JavaScript bundle is no longer moved past an inline `<script>` when it is placed after trailing jQuery files, so inline code that relies on the bundle keeps running after it

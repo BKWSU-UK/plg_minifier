@@ -86,4 +86,26 @@ class MinifierHtmlReplacementsTest extends TestCase
 
         $this->assertSame('  ', $edits->textBetween(0, 1));
     }
+
+    public function testANonStylesheetLinkDoesNotSwallowTheStylesheetAfterIt(): void
+    {
+        $tags = MinifierHtmlReplacements::stylesheets(
+            '<link href="/media/images/favicon.svg" rel="icon"><link href="/css/a.css?v=1" rel="stylesheet">'
+            . "<link href='/css/b.css' rel='stylesheet'>"
+        );
+
+        $this->assertSame(2, $tags->count());
+        $this->assertSame('/css/a.css?v=1', $tags->url(0));
+        $this->assertSame('/css/b.css', $tags->url(1));
+    }
+
+    public function testAScriptWithANonJsSourceDoesNotSwallowTheScriptAfterIt(): void
+    {
+        $tags = MinifierHtmlReplacements::scripts(
+            '<script src="/index.php?option=com_ajax&format=raw"></script><script src="/js/b.js"></script>'
+        );
+
+        $this->assertSame(1, $tags->count());
+        $this->assertSame('/js/b.js', $tags->url(0));
+    }
 }

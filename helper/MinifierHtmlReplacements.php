@@ -15,9 +15,10 @@ class MinifierHtmlReplacements
     /** Capture group holding the asset URL in the plugin's tag patterns */
     private const URL_GROUP = 2;
 
-    private const SCRIPT_PATTERN = '/<script[^>]+src=([\'"])(.*?\.js(?:\?[^"\']*)?)\1[^>]*>/i';
+    // The URL may not contain a quote, so it cannot run on into a later tag's attribute
+    private const SCRIPT_PATTERN = '/<script[^>]+src=([\'"])([^"\']*?\.js(?:\?[^"\']*)?)\1[^>]*>/i';
 
-    private const STYLESHEET_PATTERN = '/<link[^>]+href=([\'"])(.*?\.css(?:\?[^"\']*)?)\1[^>]*>/i';
+    private const STYLESHEET_PATTERN = '/<link[^>]+href=([\'"])([^"\']*?\.css(?:\?[^"\']*)?)\1[^>]*>/i';
 
     /** @var array<int, array{offset: int, length: int, replacement: string, sequence: int}> */
     private array $edits = [];
