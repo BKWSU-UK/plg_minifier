@@ -153,7 +153,7 @@ class MinifierBundleCacheTest extends TestCase
 
         $bundle = $this->cache()->write($this->files('/css/fonts.css'), MinifierAssetType::Css);
 
-        $this->assertSame(['https://fonts.example.com/css?family=A'], $bundle->externalImports);
+        $this->assertSame([['url' => 'https://fonts.example.com/css?family=A', 'media' => '']], $bundle->externalImports);
         $this->assertStringNotContainsString('fonts.example.com', $this->contentAt($bundle->url));
         $this->assertSame(
             '<link href="https://fonts.example.com/css?family=A" rel="stylesheet"><link href="' . $bundle->url . '" rel="stylesheet">',
@@ -283,7 +283,7 @@ class MinifierBundleCacheTest extends TestCase
         $this->assertStringStartsWith('@charset "utf-8";', $content);
         $this->assertStringContainsString('body{font-family:A}', $content);
         $this->assertStringNotContainsString('@import', $content);
-        $this->assertSame(['https://fonts.example.com/css?family=A'], $bundle->externalImports);
+        $this->assertSame([['url' => 'https://fonts.example.com/css?family=A', 'media' => '']], $bundle->externalImports);
     }
 
     public function testACharsetWithAnImportDoesNotSwallowRulesFromTheNextStylesheet(): void
@@ -355,5 +355,116 @@ class MinifierBundleCacheTest extends TestCase
 
         $multi = $cache->write($this->files('/css/c.css', '/css/d.css'), MinifierAssetType::Css);
         $this->assertSame('/media/cache/css/combined-7dfa2313.css', $multi->url);
+    }
+
+    public function testAnExternalImportWithAMediaQueryBecomesALinkForThatMedia(): void
+    {
+        $this->write('/css/media.css', "@import url(\"https://cdn.example.com/print.css\") print;\nbody { color: red; }\n");
+
+        $bundle = $this->cache()->write($this->files('/css/media.css'), MinifierAssetType::Css);
+        $content = $this->contentAt($bundle->url);
+
+        $this->assertSame([['url' => 'https://cdn.example.com/print.css', 'media' => 'print']], $bundle->externalImports);
+        $this->assertSame(
+            '<link href="https://cdn.example.com/print.css" rel="stylesheet" media="print"><link href="' . $bundle->url . '" rel="stylesheet">',
+            $bundle->html()
+        );
+        $this->assertStringNotContainsString('@import', $content);
+        $this->assertStringNotContainsString('print;', $content);
+        $this->assertStringContainsString('body{color:red}', $content);
+    }
+
+    public static function importsALinkCannotExpress(): array
+    {
+        return [
+            'supports()' => [
+                "@import url(\"https://cdn.example.com/grid.css\") supports(display: grid);\np { margin: 0; }\n",
+                '@import url(https://cdn.example.com/grid.css) supports(display:grid);',
+                'p{margin:0}',
+            ],
+            'layer()' => [
+                "@import url(\"https://cdn.example.com/theme.css\") layer(theme);\np { margin: 0; }\n",
+                '@import url(https://cdn.example.com/theme.css) layer(theme);',
+                'p{margin:0}',
+            ],
+        ];
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('importsALinkCannotExpress')]
+    public function testAnExternalImportALinkCannotExpressStaysAsAnImportAtTheTop(string $css, string $import, string $rule): void
+    {
+        $this->write('/css/q.css', $css);
+
+        $bundle = $this->cache()->write($this->files('/css/q.css'), MinifierAssetType::Css);
+        $content = $this->contentAt($bundle->url);
+
+        $this->assertSame([], $bundle->externalImports);
+        $this->assertStringStartsWith($import, $content);
+        $this->assertStringContainsString($rule, $content);
+    }
+
+    public function testALayerStatementStaysAheadOfTheLayeredImportItOrders(): void
+    {
+        $this->write(
+            '/css/layers.css',
+            "@layer base, theme;\n@import url(\"https://cdn.example.com/theme.css\") layer(theme);\n@layer base { body { color: red; } }\n"
+        );
+
+        $content = $this->contentAt($this->cache()->write($this->files('/css/layers.css'), MinifierAssetType::Css)->url);
+
+        $this->assertStringStartsWith("@layer base,theme;\n@import url(https://cdn.example.com/theme.css) layer(theme);", $content);
+        $this->assertStringContainsString('@layer base{body{color:red}}', $content);
+        $this->assertSame(1, substr_count($content, '@layer base,theme;'));
+    }
+
+    public function testALayerStatementBeforeAPlainImportKeepsItsSemicolon(): void
+    {
+        $this->write('/css/l.css', "@layer a, b;\n@import url(\"https://cdn.example.com/x.css\");\nbody { color: red; }\n");
+
+        $content = $this->contentAt($this->cache()->write($this->files('/css/l.css'), MinifierAssetType::Css)->url);
+
+        $this->assertStringContainsString('@layer a,b;', $content);
+        $this->assertStringContainsString('body{color:red}', $content);
+    }
+
+    public function testALayerStatementInALaterStylesheetStaysAheadOfItsLayeredImport(): void
+    {
+        $this->write('/css/a.css', 'body { color: red; }');
+        $this->write('/css/b.css', "@layer x;\n@import url(\"https://cdn.example.com/y.css\") layer(y);\np { margin: 0; }\n");
+
+        $content = $this->contentAt($this->cache()->write($this->files('/css/a.css', '/css/b.css'), MinifierAssetType::Css)->url);
+
+        $this->assertStringStartsWith("@layer x;\n@import url(https://cdn.example.com/y.css) layer(y);", $content);
+        $this->assertStringContainsString('body{color:red}p{margin:0}', $content);
+    }
+
+    public function testImportTextInsideAStringIsLeftAlone(): void
+    {
+        $this->write('/css/s.css', 'p:before { content: "@import url(x.css) print;"; }');
+
+        $bundle = $this->cache()->write($this->files('/css/s.css'), MinifierAssetType::Css);
+
+        $content = $this->contentAt($bundle->url);
+
+        // The text stays inside the string (the minifier still relocates the url() path in it)
+        $this->assertMatchesRegularExpression('/content:"@import url\([^)]*x\.css\) print;"/', $content);
+        $this->assertStringStartsWith('/* File: /css/s.css */', $content);
+        $this->assertSame([], $bundle->externalImports);
+    }
+
+    public function testPlainImportsAreBundledAsBefore(): void
+    {
+        $this->write('/css/ext.css', "@import url(\"https://fonts.example.com/css?family=A\");\nbody { font-family: A; }\n");
+        $this->write('/css/b.css', "p { margin: 0; }\n");
+        $this->write('/css/local.css', "@import url(\"/css/base.css\");\nh1 { color: red; }\n");
+        $this->write('/css/pre.min.css', "@import \"https://fonts.example.com/css?family=B\";.x{top:0}");
+        $cache = $this->cache();
+        $name = fn(string ...$webPaths): string => basename($cache->write($this->files(...$webPaths), MinifierAssetType::Css)->url);
+
+        // Bundle names recorded from the bundle cache before the import-hoisting fix
+        $this->assertSame('combined-671a2adf.css', $name('/css/ext.css'));
+        $this->assertSame('combined-745dfca4.css', $name('/css/ext.css', '/css/b.css'));
+        $this->assertSame('combined-ebb395a7.css', $name('/css/local.css'));
+        $this->assertSame('combined-3b0930a5.css', $name('/css/pre.min.css', '/css/b.css'));
     }
 }

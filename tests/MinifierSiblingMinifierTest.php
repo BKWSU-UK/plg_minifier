@@ -276,4 +276,83 @@ class MinifierSiblingMinifierTest extends TestCase
 
         $this->assertSame('/sub/css/site.min.css', $minifier->minify('/sub/css/site.css', MinifierAssetType::Css));
     }
+
+    public static function qualifiedImports(): array
+    {
+        return [
+            'layer statement then layered import' => [
+                "@layer base, theme;\n@import url(\"https://cdn.example.com/theme.css\") layer(theme);\n@layer base { body { color: red; } }\n",
+                '@layer base,theme;@import url(https://cdn.example.com/theme.css) layer(theme);@layer base{body{color:red}}',
+            ],
+            'media query' => [
+                "@import url(\"https://cdn.example.com/print.css\") print;\nbody { color: red; }\n",
+                '@import url(https://cdn.example.com/print.css) print;body{color:red}',
+            ],
+            'supports()' => [
+                "@import url(\"https://cdn.example.com/grid.css\") supports(display: grid);\np { margin: 0; }\n",
+                '@import url(https://cdn.example.com/grid.css) supports(display:grid);p{margin:0}',
+            ],
+            'media query with a feature' => [
+                "@import url(\"https://cdn.example.com/wide.css\") screen and (min-width: 900px);\np { margin: 0; }\n",
+                '@import url(https://cdn.example.com/wide.css) screen and (min-width:900px);p{margin:0}',
+            ],
+            'layer statements before and after an import keep their order' => [
+                "@layer a;\n@import url(\"https://cdn.example.com/b.css\") layer(b);\n@layer c;\nbody { color: red; }\n",
+                '@layer a;@import url(https://cdn.example.com/b.css) layer(b);@layer c;body{color:red}',
+            ],
+            'two imports, the second qualified' => [
+                "@import url(\"https://cdn.example.com/a.css\");\n@import url(\"https://cdn.example.com/b.css\") print;\np { margin: 0; }\n",
+                '@import url(https://cdn.example.com/a.css);@import url(https://cdn.example.com/b.css) print;p{margin:0}',
+            ],
+        ];
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('qualifiedImports')]
+    public function testAMinifiedStylesheetKeepsItsImportsWholeAndTheRulesAroundThem(string $css, string $expected): void
+    {
+        $this->write('/css/q.css', $css);
+
+        (new MinifierSiblingMinifier($this->root))->minify('/css/q.css', MinifierAssetType::Css);
+
+        $this->assertSame($expected, file_get_contents($this->root . '/css/q.min.css'));
+    }
+
+    public static function localImports(): array
+    {
+        return [
+            'of a file that has its own import' => [
+                ['/css/_inc.css' => "@layer z;\n@import url(\"https://cdn.example.com/deep.css\") print;\nk { color: blue; }\n"],
+                "@import url(\"_inc.css\");\nbody { color: red; }\n",
+                '@import url(_inc.css);body{color:red}',
+            ],
+            'with layer()' => [
+                ['/css/_l.css' => 'p { margin: 0; }'],
+                "@import url(\"_l.css\") layer(theme);\nbody { color: red; }\n",
+                '@import url(_l.css) layer(theme);body{color:red}',
+            ],
+            'with supports()' => [
+                ['/css/_s.css' => 'p { margin: 0; }'],
+                "@import url(\"_s.css\") supports(display: grid);\nbody { color: red; }\n",
+                '@import url(_s.css) supports(display:grid);body{color:red}',
+            ],
+            'with a media query, still inlined' => [
+                ['/css/_m.css' => 'p { margin: 0; }'],
+                "@import url(\"_m.css\") print;\nbody { color: red; }\n",
+                '@media print{p{margin:0}}body{color:red}',
+            ],
+        ];
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('localImports')]
+    public function testALocalImportIsOnlyInlinedWhenItsContentCanBeInlinedCorrectly(array $files, string $css, string $expected): void
+    {
+        foreach ($files as $webPath => $content) {
+            $this->write($webPath, $content);
+        }
+        $this->write('/css/a.css', $css);
+
+        (new MinifierSiblingMinifier($this->root))->minify('/css/a.css', MinifierAssetType::Css);
+
+        $this->assertSame($expected, file_get_contents($this->root . '/css/a.min.css'));
+    }
 }

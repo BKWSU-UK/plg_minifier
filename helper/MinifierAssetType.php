@@ -19,7 +19,7 @@ enum MinifierAssetType: string
     public function minifier(string $sourcePath): Minify\Minify
     {
         return match ($this) {
-            self::Css => new Minify\CSS($sourcePath),
+            self::Css => new MinifierCss($sourcePath),
             self::Js => new Minify\JS($sourcePath),
         };
     }

@@ -58,7 +58,7 @@ final class MinifierBundleCache
                 return null;
             }
 
-            $filename = 'combined-' . substr(md5($content . implode('', $externalImports)), 0, 8) . '.' . $type->value;
+            $filename = 'combined-' . substr(md5($content . self::importsKey($externalImports)), 0, 8) . '.' . $type->value;
 
             if (!is_dir($cacheDir) && !mkdir($cacheDir, 0755, true) && !is_dir($cacheDir)) {
                 throw new \RuntimeException('Failed to create cache directory: ' . $cacheDir);
@@ -110,6 +110,19 @@ final class MinifierBundleCache
         }
     }
 
+    /**
+     * The external imports' part of the bundle hash; a plain import contributes just its URL
+     *
+     * @param list<array{url: string, media: string}> $externalImports
+     */
+    private static function importsKey(array $externalImports): string
+    {
+        return implode('', array_map(
+            static fn(array $import): string => $import['url'] . ($import['media'] !== '' ? ' ' . $import['media'] : ''),
+            $externalImports
+        ));
+    }
+
     private function cacheDir(MinifierAssetType $type): string
     {
         return rtrim($this->siteRoot, '/\\') . '/media/cache/' . $type->value;
@@ -117,7 +130,7 @@ final class MinifierBundleCache
 
     /**
      * @param list<MinifierBundleFile> $files
-     * @return array{css: string, externalImports: list<string>} Bundle CSS and the external @import URLs taken out of it
+     * @return array{css: string, externalImports: list<array{url: string, media: string}>} Bundle CSS and the external imports taken out of it
      */
     private function cssBundle(array $files, string $targetPath): array
     {
@@ -127,7 +140,7 @@ final class MinifierBundleCache
         );
 
         if ($allMinifiable && count($files) > 1) {
-            $minifier = new Minify\CSS();
+            $minifier = new MinifierCss();
 
             foreach ($files as $file) {
                 $minifier->addFile($file->path);
@@ -164,19 +177,16 @@ final class MinifierBundleCache
             );
         }
 
-        $minifier = new Minify\CSS();
+        $minifier = new MinifierCss();
         $minifier->addFile($file->path);
 
         return $this->minified($minifier, $targetPath);
     }
 
-    /** Minified CSS with its charset repaired and root-relative URLs prefixed with the base URL */
-    private function minified(Minify\CSS $minifier, string $targetPath): string
+    /** Minified CSS with root-relative URLs prefixed with the base URL */
+    private function minified(MinifierCss $minifier, string $targetPath): string
     {
-        return MinifierCssAssetPaths::prefixSubdirectoryPaths(
-            MinifierCssAssetPaths::repairMinifiedCharset($minifier->execute($targetPath)),
-            $this->baseUrl
-        );
+        return MinifierCssAssetPaths::prefixSubdirectoryPaths($minifier->execute($targetPath), $this->baseUrl);
     }
 
     /**
@@ -249,7 +259,8 @@ final class MinifierBundle
 {
     /**
      * @param string $url The bundle's URL path
-     * @param list<string> $externalImports External stylesheet URLs taken out of a CSS bundle's @import rules
+     * @param list<array{url: string, media: string}> $externalImports External stylesheets taken out of a CSS bundle's
+     *                                                               @import rules, with their media query ('' for all media)
      */
     public function __construct(
         public readonly string $url,
@@ -267,8 +278,10 @@ final class MinifierBundle
 
         $html = '';
 
-        foreach ($this->externalImports as $importUrl) {
-            $html .= '<link href="' . htmlspecialchars($importUrl, ENT_QUOTES, 'UTF-8') . '" rel="stylesheet">';
+        foreach ($this->externalImports as $import) {
+            $html .= '<link href="' . htmlspecialchars($import['url'], ENT_QUOTES, 'UTF-8') . '" rel="stylesheet"'
+                . ($import['media'] !== '' ? ' media="' . htmlspecialchars($import['media'], ENT_QUOTES, 'UTF-8') . '"' : '')
+                . '>';
         }
 
         return $html . '<link href="' . $this->url . '" rel="stylesheet">';

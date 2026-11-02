@@ -9,6 +9,8 @@ require dirname(__DIR__) . '/helper/MinifierAssetLocator.php';
 require dirname(__DIR__) . '/helper/MinifierSiblingMinifier.php';
 require dirname(__DIR__) . '/helper/MinifierAssetPlan.php';
 require dirname(__DIR__) . '/helper/MinifierBundleCache.php';
+// Extends a library class, so it needs the autoloader above
+require dirname(__DIR__) . '/helper/MinifierCss.php';
 
 if (!defined('JPATH_ROOT')) {
     define('JPATH_ROOT', dirname(__DIR__) . '/tests/fixtures/joomla');

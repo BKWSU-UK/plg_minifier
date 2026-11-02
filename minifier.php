@@ -52,6 +52,8 @@ class PlgSystemMinifier extends CMSPlugin
         }
         
         require_once __DIR__ . '/vendor/autoload.php';
+        // Extends a library class, so it can only be loaded once the autoloader is in place
+        require_once __DIR__ . '/helper/MinifierCss.php';
         
         // Set up logger if debug is enabled
         if ($this->params->get('debug', 0)) {

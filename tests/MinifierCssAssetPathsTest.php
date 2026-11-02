@@ -141,9 +141,10 @@ class MinifierCssAssetPathsTest extends TestCase
         $result = MinifierCssAssetPaths::prepareCombinedCss($css);
 
         $this->assertSame(
-            [
-                'https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..600;1,9..144,400..500&display=swap',
-            ],
+            [[
+                'url' => 'https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..600;1,9..144,400..500&display=swap',
+                'media' => '',
+            ]],
             $result['externalImports']
         );
         $this->assertStringNotContainsString('@import', $result['css']);
@@ -169,7 +170,7 @@ class MinifierCssAssetPathsTest extends TestCase
 
         $result = MinifierCssAssetPaths::prepareCombinedCss($css);
 
-        $this->assertSame(['https://fonts.googleapis.com/css2?family=Test&display=swap'], $result['externalImports']);
+        $this->assertSame([['url' => 'https://fonts.googleapis.com/css2?family=Test&display=swap', 'media' => '']], $result['externalImports']);
         $this->assertSame(0, substr_count($result['css'], "\xEF\xBB\xBF"));
         $this->assertStringContainsString(':root{--x:1}', $result['css']);
     }

@@ -10,8 +10,7 @@ class MinifierCssAssetPaths
     /**
      * A real `@charset` rule: exactly `@charset "…"` (the only form CSS treats as an encoding
      * declaration) at a rule boundary, so text inside strings and url()s never matches.
-     * Its `;` may be missing in minifier output. Group 1 is the whitespace before the rule,
-     * which removal puts back; group 2 is the encoding.
+     * Group 1 is the whitespace before the rule, which removal puts back; group 2 is the encoding.
      */
     private const CHARSET_PATTERN = '/(?:^|(?<=[;{}])|(?<=\*\/))(\s*)@charset "([^"]*)"(?:\s*;)?/';
 
@@ -87,22 +86,6 @@ class MinifierCssAssetPaths
     }
 
     /**
-     * Repairs minifier output in which `@import` rules were moved ahead of `@charset`
-     * and the semicolon ending the charset was consumed with them (the minifier's
-     * import hoisting also takes the `;` just before each `@import`). Puts the first
-     * `@charset` back at the very start, complete, and drops any others. CSS without
-     * `@charset` is returned unchanged.
-     */
-    public static function repairMinifiedCharset(string $css): string
-    {
-        if (preg_match(self::CHARSET_PATTERN, $css, $match) !== 1) {
-            return $css;
-        }
-
-        return '@charset "' . $match[2] . '";' . preg_replace(self::CHARSET_PATTERN, '$1', $css);
-    }
-
-    /**
      * Prefixes root-relative CSS asset URLs with the Joomla base path
      */
     public static function prefixSubdirectoryPaths(string $cssContent, string $base): string
@@ -143,16 +126,31 @@ class MinifierCssAssetPaths
     }
 
     /**
-     * Prepares combined CSS: strips duplicate @charset rules, hoists local @import,
-     * and extracts external @import URLs for HTML link tags.
+     * `@import "…"` or `@import url("…")` with any qualifiers, at a rule boundary (so text
+     * inside strings never matches); groups `lead` (whitespace before it), `url`, `qualifier`
+     */
+    private const IMPORT_QUOTED_PATTERN = '/(?:^|(?<=[;{}])|(?<=\*\/))(?<lead>(?:\s|\xEF\xBB\xBF)*)'
+        . '@import\s*(?:url\s*\(\s*)?(["\'])(?<url>.*?)\2(?<qualifier>\s+[^;]*)?;/is';
+
+    /** `@import url(…)` with an unquoted URL and any qualifiers, at a rule boundary */
+    private const IMPORT_UNQUOTED_PATTERN = '/(?:^|(?<=[;{}])|(?<=\*\/))(?<lead>(?:\s|\xEF\xBB\xBF)*)'
+        . '@import\s+url\(\s*(?<url>[^"\')\s][^)]*)\s*\)(?<qualifier>\s+[^;]*)?;/is';
+
+    /** A layer order statement such as `@layer base, theme;` (not a layer block), at a rule boundary */
+    private const LAYER_STATEMENT_PATTERN = '/(?:^|(?<=[;{}])|(?<=\*\/))(?<lead>(?:\s|\xEF\xBB\xBF)*)(?<statement>@layer\s+[^;{}]+;)/i';
+
+    /**
+     * Prepares combined CSS: keeps one `@charset` first, takes external `@import`s out
+     * for HTML `<link>` tags where a link can express them (no qualifier, or a media
+     * query), and hoists the remaining `@import`s (local ones, and external ones with
+     * `supports()` or `layer()`) to the top whole. Layer order statements that come
+     * before a hoisted import move up with it, in their original order.
      *
-     * @return array{css: string, externalImports: array<int, string>}
+     * @return array{css: string, externalImports: list<array{url: string, media: string}>}
      */
     public static function prepareCombinedCss(string $cssContent): array
     {
         $charset = '';
-        $externalImports = [];
-        $localImports = [];
         $body = $cssContent;
 
         if (preg_match(self::CHARSET_PATTERN, $body, $match) === 1) {
@@ -160,72 +158,111 @@ class MinifierCssAssetPaths
             $body = preg_replace(self::CHARSET_PATTERN, '$1', $body);
         }
 
-        while (preg_match(
-            '/@import\s*(?:url\s*\(\s*)?(["\'])(.*?)\1(?:\s+[^;]*)?;/is',
-            $body,
-            $match,
-            PREG_OFFSET_CAPTURE
-        ) === 1) {
-            $rule = trim($match[0][0]);
-            $importUrl = $match[2][0];
-            $body = substr_replace($body, '', $match[0][1], strlen($match[0][0]));
+        $externalImports = [];
+        $hoisted = [];
+        $removals = [];
+        $lastHoistedOffset = -1;
 
-            if (self::isExternalImportUrl($importUrl)) {
-                if (!in_array($importUrl, $externalImports, true)) {
-                    $externalImports[] = $importUrl;
+        foreach (self::importsIn($body) as $offset => $import) {
+            $removals[$offset] = $import['length'];
+
+            if (self::isExternalImportUrl($import['url'])
+                && preg_match('/\b(?:supports|layer)\b/i', $import['qualifier']) !== 1) {
+                $link = ['url' => $import['url'], 'media' => $import['qualifier']];
+
+                if (!in_array($link, $externalImports, true)) {
+                    $externalImports[] = $link;
                 }
 
                 continue;
             }
 
-            if (!in_array($rule, $localImports, true)) {
-                $localImports[] = $rule;
+            if (!in_array($import['rule'], $hoisted, true)) {
+                $hoisted[$offset] = $import['rule'];
+            }
+
+            $lastHoistedOffset = $offset;
+        }
+
+        if ($lastHoistedOffset >= 0) {
+            preg_match_all(self::LAYER_STATEMENT_PATTERN, $body, $layers, PREG_SET_ORDER | PREG_OFFSET_CAPTURE);
+
+            foreach ($layers as $layer) {
+                [$statement, $offset] = $layer['statement'];
+
+                if ($offset < $lastHoistedOffset && !isset($removals[$offset])) {
+                    $hoisted[$offset] = $statement;
+                    $removals[$offset] = strlen($statement);
+                }
             }
         }
 
-        while (preg_match(
-            '/@import\s+url\(\s*([^"\')\s][^)]*)\s*\)(?:\s+[^;]*)?;/is',
-            $body,
-            $match,
-            PREG_OFFSET_CAPTURE
-        ) === 1) {
-            $rule = trim($match[0][0]);
-            $importUrl = trim($match[1][0]);
-            $body = substr_replace($body, '', $match[0][1], strlen($match[0][0]));
+        krsort($removals);
 
-            if (self::isExternalImportUrl($importUrl)) {
-                if (!in_array($importUrl, $externalImports, true)) {
-                    $externalImports[] = $importUrl;
-                }
-
-                continue;
-            }
-
-            if (!in_array($rule, $localImports, true)) {
-                $localImports[] = $rule;
-            }
+        foreach ($removals as $offset => $length) {
+            $body = substr_replace($body, '', $offset, $length);
         }
 
         $body = ltrim($body);
         $body = str_replace("\xEF\xBB\xBF", '', $body);
 
-        if ($charset === '' && $localImports === [] && $externalImports === []) {
+        if ($charset === '' && $hoisted === [] && $externalImports === []) {
             return [
                 'css' => $cssContent,
                 'externalImports' => [],
             ];
         }
 
+        ksort($hoisted);
         $prefix = $charset !== '' ? $charset . "\n" : '';
 
-        if ($localImports !== []) {
-            $prefix .= implode("\n", $localImports) . "\n";
+        if ($hoisted !== []) {
+            $prefix .= implode("\n", $hoisted) . "\n";
         }
 
         return [
             'css' => $prefix . $body,
             'externalImports' => $externalImports,
         ];
+    }
+
+    /**
+     * Every `@import` rule, by offset in page order; overlapping matches are dropped
+     *
+     * @return array<int, array{length: int, rule: string, url: string, qualifier: string}>
+     */
+    private static function importsIn(string $css): array
+    {
+        $imports = [];
+
+        foreach ([self::IMPORT_QUOTED_PATTERN, self::IMPORT_UNQUOTED_PATTERN] as $pattern) {
+            preg_match_all($pattern, $css, $matches, PREG_SET_ORDER | PREG_OFFSET_CAPTURE);
+
+            foreach ($matches as $match) {
+                $lead = strlen($match['lead'][0]);
+                $imports[$match[0][1] + $lead] = [
+                    'length' => strlen($match[0][0]) - $lead,
+                    'rule' => trim($match[0][0]),
+                    'url' => trim($match['url'][0]),
+                    'qualifier' => trim($match['qualifier'][0] ?? ''),
+                ];
+            }
+        }
+
+        ksort($imports);
+        $end = -1;
+
+        foreach ($imports as $offset => $import) {
+            if ($offset < $end) {
+                unset($imports[$offset]);
+
+                continue;
+            }
+
+            $end = $offset + $import['length'];
+        }
+
+        return $imports;
     }
 
     private static function isExternalImportUrl(string $url): bool

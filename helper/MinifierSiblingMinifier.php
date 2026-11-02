@@ -59,10 +59,6 @@ final class MinifierSiblingMinifier
             try {
                 $minified = $type->minifier($sourcePath)->execute($siblingPath);
 
-                if ($type === MinifierAssetType::Css) {
-                    $minified = MinifierCssAssetPaths::repairMinifiedCharset($minified);
-                }
-
                 if (@file_put_contents($siblingPath, $minified) === false) {
                     throw new \RuntimeException('Failed to write ' . $siblingPath);
                 }
