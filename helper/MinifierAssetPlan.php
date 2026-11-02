@@ -112,9 +112,10 @@ final class MinifierAssetPlan
      * Where the bundle tag goes. A stylesheet bundle replaces the block's first tag; a
      * script bundle by default replaces the block's last tag.
      *
-     * A script bundle that calls jQuery without containing it jumps to the first local
-     * jQuery core later in the page, whatever lies in between, since it cannot run before
-     * jQuery; from there it moves past the scripts combined right after that core.
+     * A script bundle that calls jQuery without containing it jumps to the first jQuery
+     * core later in the page, whatever lies in between, since it cannot run before jQuery.
+     * That core may be local or from a CDN; excluded tags are ignored. From there the
+     * bundle moves past the scripts combined right after that core.
      * Otherwise it moves past trailing jQuery files the block skipped. Both walks stop
      * at the first tag that breaks contiguity, such as an inline <script> in between.
      *
@@ -168,10 +169,11 @@ final class MinifierAssetPlan
         return $index;
     }
 
+    /** The first jQuery core after a tag, local or from a CDN, that is not excluded */
     private function laterJqueryCoreIndex(MinifierHtmlReplacements $tags, int $afterIndex): ?int
     {
         for ($index = $afterIndex + 1; $index < $tags->count(); $index++) {
-            if ($this->locator->isLocal($tags->url($index)) && self::isJqueryCore(self::webPath($tags, $index))) {
+            if (!$this->locator->isExcluded($tags->url($index)) && self::isJqueryCore(self::webPath($tags, $index))) {
                 return $index;
             }
         }
@@ -257,9 +259,13 @@ final class MinifierAssetPlan
         return $this->locator->locate($tags->url($index));
     }
 
+    /** `jquery.js`, optionally versioned (`jquery-3.7.1`, `jquery-4.0.0-rc.1`), slim and/or minified */
     private static function isJqueryCore(string $webPath): bool
     {
-        return preg_match('#/jquery(?:\.min)?\.js$#', strtolower($webPath)) === 1;
+        return preg_match(
+            '#/jquery(?:-\d+(?:\.\d+)*(?:-[a-z0-9]+(?:\.[a-z0-9]+)*)?)?(?:\.slim)?(?:\.min)?\.js$#',
+            strtolower($webPath)
+        ) === 1;
     }
 
     private static function isJqueryNoConflict(string $webPath): bool

@@ -118,7 +118,7 @@ The plugin provides several configuration options in the Joomla backend:
    ```
 3. **OR** Disable "Combine JavaScript Files" and use individual minification only
 
-**Technical details**: Version 1.0.5+ intelligently tracks which scripts are skipped (jQuery, external scripts, excluded paths, pre-minified files when not combining all) and places the combined file **after** them to ensure proper dependency order.
+**Technical details**: Version 1.0.5+ intelligently tracks which scripts are skipped (jQuery, external scripts, excluded paths, pre-minified files when not combining all) and places the combined file **after** them to ensure proper dependency order. A combined file whose code calls jQuery is also placed after a jQuery loaded later in the page from a CDN (for example `https://code.jquery.com/jquery-3.7.1.min.js`), including versioned and slim builds; a jQuery URL matching an excluded path is ignored for this.
 
 #### Files Not Being Minified
 1. **Enable debug mode** in plugin settings to see detailed logging

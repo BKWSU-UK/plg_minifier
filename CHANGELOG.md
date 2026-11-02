@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- "jQuery is not defined" no longer occurs when a site loads jQuery from a CDN after its template scripts: a combined JavaScript bundle that calls jQuery is now placed after a jQuery core loaded later from a CDN, not only after a local one. Versioned, pre-release and slim jQuery file names (`jquery-3.7.1.min.js`, `jquery-4.0.0-rc.1.min.js`, `jquery.slim.min.js`) are now recognised as jQuery too, which also puts a local versioned jQuery first in a combined bundle
 - Combining CSS no longer changes which rules win around styles it does not combine. An inline `<style>` block, or a stylesheet `<link>` it cannot combine (such as Google Fonts), between two stylesheets now splits the bundle, so each stylesheet keeps its place in the cascade
 - A page that needs more than 5 combined bundles of one type no longer links bundles that were deleted while it was being rendered. Old bundles are still pruned, keeping the 5 most recent, but a bundle the page being rendered uses is never deleted
 - Sites installed in a subdirectory (for example `https://example.com/sub/`) now have their CSS and JavaScript minified and combined. Asset URLs that include the subdirectory (`/sub/media/…`) were looked up without removing it, so no file was ever found

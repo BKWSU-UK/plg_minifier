@@ -56,6 +56,11 @@ class MinifierAssetPlanTest extends TestCase
         return '<script src="/js/' . $name . '"></script>';
     }
 
+    private static function externalScript(string $url): string
+    {
+        return '<script src="' . $url . '"></script>';
+    }
+
     private static function bundle(int $number): string
     {
         return '<script src="/bundle-' . $number . '.js"></script>';
@@ -416,5 +421,63 @@ class MinifierAssetPlanTest extends TestCase
         [$html] = $this->combine(self::script('a.js') . '<style>p { color: blue; }</style>' . self::script('b.js'));
 
         $this->assertSame('<style>p { color: blue; }</style>' . self::bundle(0), $html);
+    }
+
+    public static function cdnJqueryUrls(): array
+    {
+        return [
+            'code.jquery.com, versioned' => ['https://code.jquery.com/jquery-3.7.1.min.js'],
+            'code.jquery.com, slim' => ['https://code.jquery.com/jquery-3.7.1.slim.min.js'],
+            'cdnjs' => ['https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.min.js'],
+            'jsdelivr, protocol-relative' => ['//cdn.jsdelivr.net/npm/jquery@3.7.1/dist/jquery.min.js'],
+            'pre-release build' => ['https://code.jquery.com/jquery-4.0.0-rc.1.min.js'],
+        ];
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('cdnJqueryUrls')]
+    public function testABundleThatCallsJqueryMovesAfterAJqueryCoreLoadedLaterFromACdn(string $url): void
+    {
+        $cdnJquery = self::externalScript($url);
+
+        [$html] = $this->combine(self::script('template.js') . $cdnJquery . self::script('pre.min.js'));
+
+        $this->assertSame($cdnJquery . self::bundle(0) . self::script('pre.min.js'), $html);
+    }
+
+    public function testALaterExternalScriptThatIsNotJqueryDoesNotMoveTheBundle(): void
+    {
+        $external = self::externalScript('https://cdn.example.com/js/analytics.min.js');
+
+        [$html] = $this->combine(self::script('template.js') . $external);
+
+        $this->assertSame(self::bundle(0) . $external, $html);
+    }
+
+    public function testABundleThatDoesNotCallJqueryIsNotMovedByALaterCdnJquery(): void
+    {
+        $cdnJquery = self::externalScript('https://code.jquery.com/jquery-3.7.1.min.js');
+
+        [$html] = $this->combine(self::script('a.js') . $cdnJquery);
+
+        $this->assertSame(self::bundle(0) . $cdnJquery, $html);
+    }
+
+    public function testAnExcludedCdnJqueryIsStillIgnored(): void
+    {
+        $cdnJquery = self::externalScript('https://code.jquery.com/jquery-3.7.1.min.js');
+
+        [$html] = $this->combine(self::script('template.js') . $cdnJquery, excludePaths: ['code.jquery.com']);
+
+        $this->assertSame(self::bundle(0) . $cdnJquery, $html);
+    }
+
+    public function testALocalVersionedJqueryCountsAsJqueryCore(): void
+    {
+        $this->write('/media/vendor/jquery/js/jquery-3.7.1.min.js', 'window.jQuery=function(){};');
+        $jquery = '<script src="/media/vendor/jquery/js/jquery-3.7.1.min.js"></script>';
+
+        [$html] = $this->combine(self::script('template.js') . self::INLINE . $jquery);
+
+        $this->assertSame(self::INLINE . $jquery . self::bundle(0), $html);
     }
 }

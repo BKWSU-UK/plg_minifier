@@ -35,15 +35,21 @@ final class MinifierAssetLocator
     /** Neither excluded nor external (query string ignored) */
     public function isLocal(string $url): bool
     {
+        return !$this->isExcluded($url) && !self::isExternalUrl(self::splitQuery($url)[0]);
+    }
+
+    /** Whether the URL (query string ignored) contains one of the exclude paths */
+    public function isExcluded(string $url): bool
+    {
         [$path] = self::splitQuery($url);
 
         foreach ($this->excludePaths as $excludePath) {
             if ($excludePath !== '' && str_contains($path, $excludePath)) {
-                return false;
+                return true;
             }
         }
 
-        return !self::isExternalUrl($path);
+        return false;
     }
 
     /**
