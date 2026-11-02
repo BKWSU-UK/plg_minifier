@@ -72,7 +72,7 @@ The plugin provides several configuration options in the Joomla backend:
 - **Automatic Minification**: Minifies CSS and JavaScript files on-the-fly
 - **File Combination**: Combines multiple files into single files to reduce HTTP requests
 - **Smart Caching**: Only re-minifies files when source files change
-- **Automatic Cleanup**: Keeps the 5 most recent combined files per type, and never deletes a bundle the page being rendered uses
+- **Automatic Cleanup**: Deletes a combined file once no page has used it for the configured lifetime ("Combined File Lifetime", default 7 days). Keep the lifetime longer than any page cache (Joomla, proxy, CDN) that may still serve pages linking older combined files
 - **Path Exclusions**: Exclude specific paths from minification
 - **Security**: Built-in path traversal protection
 - **Debug Logging**: Detailed logging for troubleshooting

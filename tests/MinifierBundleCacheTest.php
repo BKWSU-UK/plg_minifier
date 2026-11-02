@@ -213,61 +213,94 @@ class MinifierBundleCacheTest extends TestCase
         return $kept;
     }
 
-    public function testPruningKeepsTheFiveNewestBundlesWhenAPassWritesFewer(): void
+    private const DAY = 86400;
+
+    public function testBundlesUsedWithinTheRetentionWindowSurvivePruningHoweverManyThereAre(): void
     {
-        $earlier = $this->writeBundles($this->cache(), ['f1' => 107, 'f2' => 106, 'f3' => 105, 'f4' => 104, 'f5' => 103, 'f6' => 102, 'f7' => 101]);
-        $this->write('/css/a.css', 'a { color: red; }');
-        $css = basename($this->cache()->write($this->files('/css/a.css'), MinifierAssetType::Css)->url);
+        $recent = $this->writeBundles($this->cache(), [
+            'r1' => 9 * 3600, 'r2' => 8 * 3600, 'r3' => 7 * 3600, 'r4' => 6 * 3600, 'r5' => 5 * 3600,
+            'r6' => 4 * 3600, 'r7' => 3 * 3600, 'r8' => 2 * 3600, 'r9' => 3600,
+        ]);
 
         $pass = $this->cache();
-        $current = $this->writeBundles($pass, ['g1' => 0]);
+        $current = $this->writeBundles($pass, ['now' => 0]);
         $pass->prune(MinifierAssetType::Js);
 
-        $expected = [...$current, ...array_slice($earlier, 3)];
+        $expected = [...$recent, ...$current];
+        sort($expected);
+        $this->assertSame($expected, $this->keptJsBundles());
+    }
+
+    public function testBundlesUnusedForLongerThanTheRetentionWindowAreDeleted(): void
+    {
+        $this->writeBundles($this->cache(), ['stale1' => 8 * self::DAY, 'stale2' => 30 * self::DAY]);
+        $fresh = $this->writeBundles($this->cache(), ['fresh' => 6 * self::DAY]);
+        $this->write('/css/a.css', 'a { color: red; }');
+        $css = basename($this->cache()->write($this->files('/css/a.css'), MinifierAssetType::Css)->url);
+        touch($this->root . '/media/cache/css/' . $css, time() - 30 * self::DAY);
+
+        $pass = $this->cache();
+        $current = $this->writeBundles($pass, ['now' => 0]);
+        $pass->prune(MinifierAssetType::Js);
+
+        $expected = [...$fresh, ...$current];
         sort($expected);
         $this->assertSame($expected, $this->keptJsBundles());
         $this->assertFileExists($this->root . '/media/cache/css/' . $css);
     }
 
-    public function testPruningNeverDeletesABundleWrittenInThisPassButStillPrunesOlderOnes(): void
+    public function testABundleReusedByALaterPageCountsAsRecentlyUsed(): void
     {
-        $this->writeBundles($this->cache(), ['old1' => 300, 'old2' => 200]);
-        $this->write('/css/a.css', 'a { color: red; }');
-        $css = basename($this->cache()->write($this->files('/css/a.css'), MinifierAssetType::Css)->url);
+        [$original] = $this->writeBundles($this->cache(), ['shared' => 30 * self::DAY]);
 
+        // Another page renders with the same bundle, then a third page's pass prunes
+        $reused = basename($this->cache()->write($this->files('/js/shared.js'), MinifierAssetType::Js)->url);
+        $this->assertSame($original, $reused);
         $pass = $this->cache();
-        $current = $this->writeBundles($pass, ['p1' => 7, 'p2' => 6, 'p3' => 5, 'p4' => 4, 'p5' => 3, 'p6' => 2, 'p7' => 1]);
+        $this->writeBundles($pass, ['other' => 0]);
         $pass->prune(MinifierAssetType::Js);
 
-        sort($current);
-        $this->assertSame($current, $this->keptJsBundles());
-        $this->assertFileExists($this->root . '/media/cache/css/' . $css);
+        $this->assertContains($reused, $this->keptJsBundles());
     }
 
-    public function testAPassThatWritesExactlyFiveBundlesKeepsOnlyThose(): void
+    public function testABundleWrittenInThisPassIsNeverDeleted(): void
     {
-        $this->writeBundles($this->cache(), ['old1' => 300, 'old2' => 200, 'old3' => 100]);
-
         $pass = $this->cache();
-        $current = $this->writeBundles($pass, ['p1' => 5, 'p2' => 4, 'p3' => 3, 'p4' => 2, 'p5' => 1]);
+        $current = $this->writeBundles($pass, ['p1' => 30 * self::DAY, 'p2' => 0]);
         $pass->prune(MinifierAssetType::Js);
 
         sort($current);
         $this->assertSame($current, $this->keptJsBundles());
     }
 
-    public function testABundleRewrittenInThisPassCountsAsCurrent(): void
+    public static function lifetimeSettings(): array
     {
-        $earlier = $this->writeBundles($this->cache(), ['reused' => 300, 'e2' => 290, 'e3' => 280]);
+        return [
+            'one day' => [1, self::DAY],
+            'thirty days, as a string' => ['30', 30 * self::DAY],
+            'not set' => [null, 7 * self::DAY],
+            'zero' => [0, 7 * self::DAY],
+            'negative' => [-3, 7 * self::DAY],
+            'not a number' => ['soon', 7 * self::DAY],
+        ];
+    }
 
-        // This pass writes the reused bundle again (same content, same name) and five new ones;
-        // the reused one is the oldest of the six, so "newest five" alone would delete it
-        $pass = $this->cache();
-        $current = $this->writeBundles($pass, ['reused' => 60, 'n1' => 5, 'n2' => 4, 'n3' => 3, 'n4' => 2, 'n5' => 1]);
+    #[\PHPUnit\Framework\Attributes\DataProvider('lifetimeSettings')]
+    public function testTheLifetimeSettingInDaysBecomesTheRetentionWindowAndInvalidValuesUseTheDefault(
+        mixed $days,
+        int $seconds
+    ): void {
+        $this->assertSame($seconds, MinifierBundleCache::retentionSecondsFromDays($days));
+    }
+
+    public function testTheRetentionWindowIsConfigurable(): void
+    {
+        $this->writeBundles($this->cache(), ['old' => 2 * self::DAY]);
+
+        $pass = new MinifierBundleCache($this->root, '', retentionSeconds: self::DAY);
+        $current = $this->writeBundles($pass, ['now' => 0]);
         $pass->prune(MinifierAssetType::Js);
 
-        $this->assertSame($earlier[0], $current[0]);
-        sort($current);
         $this->assertSame($current, $this->keptJsBundles());
     }
 

@@ -236,7 +236,12 @@ class PlgSystemMinifier extends CMSPlugin
         MinifierAssetType $type,
         string $baseUrl
     ): string {
-        $cache = new MinifierBundleCache(JPATH_ROOT, $baseUrl, $this->logger());
+        $cache = new MinifierBundleCache(
+            JPATH_ROOT,
+            $baseUrl,
+            $this->logger(),
+            MinifierBundleCache::retentionSecondsFromDays($this->params->get('combined_lifetime'))
+        );
         $written = false;
 
         foreach ($plan->blocks($tags) as $block) {

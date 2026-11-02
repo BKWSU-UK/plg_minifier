@@ -9,12 +9,14 @@ use MatthiasMullie\Minify;
  * Owns choosing minify vs. pass-through per file, relocating CSS `url()` and
  * `@import` paths for the cache location, hoisting `@charset`/`@import`,
  * extracting external `@import`s (which become separate `<link>` tags),
- * content hashing, writing, and pruning old bundles.
+ * content hashing, writing, and pruning bundles no page has used for a while.
  */
 final class MinifierBundleCache
 {
-    /** prune() keeps this many most recent bundles per asset type; bundles written by this instance are never deleted */
-    private const KEEP = 5;
+    /** Default retention window in days: a bundle unused for longer than this is deleted by prune() */
+    public const DEFAULT_RETENTION_DAYS = 7;
+
+    public const DEFAULT_RETENTION_SECONDS = self::DEFAULT_RETENTION_DAYS * 86400;
 
     /** @var array<string, array<string, true>> Bundle file names written by this instance, keyed by asset type value */
     private array $writtenNames = [];
@@ -26,14 +28,28 @@ final class MinifierBundleCache
      * @param string $siteRoot Filesystem path of the site root; bundles are written below it
      * @param string $baseUrl The site's base URL path ('' at the domain root, '/sub' in a subdirectory install)
      * @param (\Closure(string $level, string $message): void)|null $log Receives 'info', 'warning' and 'error' messages
+     * @param int $retentionSeconds How long an unused bundle is kept; it must outlast every page cache
+     *                              (Joomla, proxy, CDN, open browser tabs) that can still link it
      */
     public function __construct(
         private readonly string $siteRoot,
         private readonly string $baseUrl,
-        ?\Closure $log = null
+        ?\Closure $log = null,
+        private readonly int $retentionSeconds = self::DEFAULT_RETENTION_SECONDS
     ) {
         $this->log = $log ?? static function (string $level, string $message): void {
         };
+    }
+
+    /**
+     * The retention window for a lifetime setting in days. A missing, zero, negative or
+     * non-numeric setting uses the default, never a shorter window.
+     */
+    public static function retentionSecondsFromDays(mixed $days): int
+    {
+        $days = is_numeric($days) ? (int) $days : 0;
+
+        return ($days >= 1 ? $days : self::DEFAULT_RETENTION_DAYS) * 86400;
     }
 
     /**
@@ -84,23 +100,21 @@ final class MinifierBundleCache
     }
 
     /**
-     * Deletes old bundles of one asset type: keeps the most recently written ones, and
-     * never deletes a bundle this instance wrote, since the page being rendered links it
+     * Deletes bundles of one asset type that no page has used within the retention window.
+     * Every render that uses a bundle rewrites it, so a bundle's modification time is when
+     * it was last used. A bundle this instance wrote is never deleted, since the page being
+     * rendered links it.
      */
     public function prune(MinifierAssetType $type): void
     {
-        $bundles = glob($this->cacheDir($type) . '/combined-*.' . $type->value) ?: [];
-
-        if (count($bundles) <= self::KEEP) {
-            return;
-        }
-
-        usort($bundles, static fn(string $a, string $b): int => filemtime($b) <=> filemtime($a));
-
         $current = $this->writtenNames[$type->value] ?? [];
+        $cutoff = time() - $this->retentionSeconds;
 
-        foreach (array_slice($bundles, self::KEEP) as $bundle) {
-            if (isset($current[basename($bundle)])) {
+        foreach (glob($this->cacheDir($type) . '/combined-*.' . $type->value) ?: [] as $bundle) {
+            $lastUsed = @filemtime($bundle);
+
+            // Unreadable usually means another request just deleted it
+            if (isset($current[basename($bundle)]) || $lastUsed === false || $lastUsed >= $cutoff) {
                 continue;
             }
 
