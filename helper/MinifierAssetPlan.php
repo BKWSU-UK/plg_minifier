@@ -131,7 +131,7 @@ final class MinifierAssetPlan
         return $this->extendWhile(
             $tags,
             $lastIndex,
-            fn(int $index): bool => MinifierAsset::isJqueryDependency(self::webPath($tags, $index))
+            fn(int $index): bool => self::isJqueryDependency(self::webPath($tags, $index))
                 && $this->locator->locate($tags->url($index)) !== null
         );
     }
@@ -158,7 +158,7 @@ final class MinifierAssetPlan
     private function laterJqueryCoreIndex(MinifierHtmlReplacements $tags, int $afterIndex): ?int
     {
         for ($index = $afterIndex + 1; $index < $tags->count(); $index++) {
-            if ($this->locator->isLocal($tags->url($index)) && MinifierAsset::isJqueryCore(self::webPath($tags, $index))) {
+            if ($this->locator->isLocal($tags->url($index)) && self::isJqueryCore(self::webPath($tags, $index))) {
                 return $index;
             }
         }
@@ -174,7 +174,7 @@ final class MinifierAssetPlan
     private static function requiresExternalJquery(array $files): bool
     {
         foreach ($files as $file) {
-            if (MinifierAsset::isJqueryCore($file->webPath)) {
+            if (self::isJqueryCore($file->webPath)) {
                 return false;
             }
         }
@@ -182,7 +182,7 @@ final class MinifierAssetPlan
         foreach ($files as $file) {
             $content = file_get_contents($file->path);
 
-            if ($content !== false && MinifierAsset::fileContentRequiresJquery($content)) {
+            if ($content !== false && self::callsJquery($content)) {
                 return true;
             }
         }
@@ -203,8 +203,8 @@ final class MinifierAssetPlan
         }
 
         $priority = static fn(MinifierBundleFile $file): int => match (true) {
-            MinifierAsset::isJqueryCore($file->webPath) => 0,
-            MinifierAsset::isJqueryNoConflict($file->webPath) => 1,
+            self::isJqueryCore($file->webPath) => 0,
+            self::isJqueryNoConflict($file->webPath) => 1,
             default => 2,
         };
 
@@ -220,7 +220,7 @@ final class MinifierAssetPlan
     private function isContiguous(MinifierHtmlReplacements $tags, int $previousIndex, int $index): bool
     {
         return $this->type !== MinifierAssetType::Js
-            || !MinifierAsset::gapContainsInlineScript($tags->textBetween($previousIndex, $index));
+            || !self::containsInlineScript($tags->textBetween($previousIndex, $index));
     }
 
     /**
@@ -236,6 +236,33 @@ final class MinifierAssetPlan
         }
 
         return $this->locator->locate($tags->url($index));
+    }
+
+    private static function isJqueryCore(string $webPath): bool
+    {
+        return preg_match('#/jquery(?:\.min)?\.js$#', strtolower($webPath)) === 1;
+    }
+
+    private static function isJqueryNoConflict(string $webPath): bool
+    {
+        return str_contains(strtolower($webPath), 'jquery-noconflict');
+    }
+
+    private static function isJqueryDependency(string $webPath): bool
+    {
+        return self::isJqueryCore($webPath) || self::isJqueryNoConflict($webPath);
+    }
+
+    /** Script code that calls `jQuery(…)`, or `$(…)` at the start of a statement */
+    private static function callsJquery(string $code): bool
+    {
+        return preg_match('/\bjQuery\s*\(|(?:^|[{;}])\s*\$\s*\(/m', $code) === 1;
+    }
+
+    /** Markup containing a `<script>` without a `src` attribute */
+    private static function containsInlineScript(string $html): bool
+    {
+        return preg_match('/<script(?![^>]*\bsrc\s*=)[^>]*>/i', $html) === 1;
     }
 
     private static function webPath(MinifierHtmlReplacements $tags, int $index): string

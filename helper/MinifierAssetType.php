@@ -10,12 +10,10 @@ enum MinifierAssetType: string
     case Css = 'css';
     case Js = 'js';
 
-    public function isPreMinified(string $path): bool
+    /** Whether a web path (without its query string) already ends in `.min.css` / `.min.js`, any letter case */
+    public function isPreMinified(string $webPath): bool
     {
-        return match ($this) {
-            self::Css => MinifierAsset::isPreMinifiedCss($path),
-            self::Js => MinifierAsset::isPreMinifiedJs($path),
-        };
+        return str_ends_with(strtolower($webPath), '.min.' . $this->value);
     }
 
     public function minifier(string $sourcePath): Minify\Minify

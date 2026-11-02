@@ -182,6 +182,49 @@ class MinifierAssetPlanTest extends TestCase
         $this->assertSame([['/js/a.js', '/js/b.js'], ['/js/c.js']], $files);
     }
 
+    public static function jqueryUsage(): array
+    {
+        return [
+            'jQuery() call' => ['jQuery(function () { window.ready = true; });', true],
+            '$() call after a statement' => ['window.x = 1; });$(function () {});', true],
+            'own $ function' => ['function $(t, e) { return t + e; }', false],
+        ];
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('jqueryUsage')]
+    public function testOnlyABundleWhoseCodeCallsJqueryMovesAfterALaterJqueryCore(string $code, bool $moves): void
+    {
+        $this->write('/js/uses.js', $code);
+
+        [$html] = $this->combine(self::script('uses.js') . self::INLINE . self::JQUERY);
+
+        $this->assertSame(
+            $moves ? self::INLINE . self::JQUERY . self::bundle(0) : self::bundle(0) . self::INLINE . self::JQUERY,
+            $html
+        );
+    }
+
+    public function testANonMinifiedJqueryCoreLaterInThePageCountsAsJqueryToo(): void
+    {
+        $this->write('/media/vendor/jquery/js/jquery.js', 'window.jQuery = function () {};');
+        $jquery = '<script src="/media/vendor/jquery/js/jquery.js"></script>';
+
+        [$html] = $this->combine(self::script('template.js') . self::INLINE . $jquery . self::script('pre.min.js'));
+
+        // jquery.js is combinable, so it becomes bundle 1; the template bundle still loads after it
+        $this->assertSame(self::INLINE . self::bundle(1) . self::bundle(0) . self::script('pre.min.js'), $html);
+    }
+
+    public function testAnExternalScriptTheCombinerDoesNotTrackDoesNotSplitTheBlock(): void
+    {
+        $untracked = '<script src="/index.php?option=com_ajax&format=raw"></script>';
+
+        [$html, $files] = $this->combine(self::script('a.js') . $untracked . self::script('b.js'));
+
+        $this->assertSame($untracked . self::bundle(0), $html);
+        $this->assertSame([['/js/a.js', '/js/b.js']], $files);
+    }
+
     public function testABundleThatUsesJqueryJumpsPastAnInlineScriptToALaterJqueryCore(): void
     {
         [$html] = $this->combine(self::script('template.js') . self::INLINE . self::JQUERY . self::NOCONFLICT);

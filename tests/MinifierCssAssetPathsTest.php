@@ -119,13 +119,13 @@ class MinifierCssAssetPathsTest extends TestCase
         );
     }
 
-    public function testHoistAtRulesMovesImportRulesToTop(): void
+    public function testPrepareCombinedCssMovesImportRulesToTop(): void
     {
         $css = "body { color: red; }\n"
             . '@import "/media/fonts/local.css";'
             . ':root { --font: Fraunces; }';
 
-        $result = MinifierCssAssetPaths::hoistAtRules($css);
+        $result = MinifierCssAssetPaths::prepareCombinedCss($css)['css'];
 
         $this->assertStringStartsWith('@import "/media/fonts/local.css";', $result);
         $this->assertStringContainsString("body { color: red; }", $result);
@@ -174,38 +174,33 @@ class MinifierCssAssetPathsTest extends TestCase
         $this->assertStringContainsString(':root{--x:1}', $result['css']);
     }
 
-    public function testStripUtf8BomRemovesLeadingByteOrderMark(): void
-    {
-        $this->assertSame('@import"x";', MinifierCssAssetPaths::stripUtf8Bom("\xEF\xBB\xBF@import\"x\";"));
-    }
-
-    public function testHoistAtRulesPlacesCharsetBeforeImports(): void
+    public function testPrepareCombinedCssPlacesCharsetBeforeImports(): void
     {
         $css = '.rule { color: blue; } @charset "utf-8"; @import "/fonts.css";';
 
-        $result = MinifierCssAssetPaths::hoistAtRules($css);
+        $result = MinifierCssAssetPaths::prepareCombinedCss($css)['css'];
 
         $this->assertStringStartsWith('@charset "utf-8";' . "\n" . '@import "/fonts.css";' . "\n", $result);
         $this->assertStringContainsString('.rule { color: blue; }', $result);
         $this->assertStringNotContainsString('@charset "utf-8"; @import', $result);
     }
 
-    public function testHoistAtRulesDeduplicatesIdenticalImports(): void
+    public function testPrepareCombinedCssDeduplicatesIdenticalImports(): void
     {
         $css = '@import "/fonts.css"; body { color: red; } @import "/fonts.css";';
 
-        $result = MinifierCssAssetPaths::hoistAtRules($css);
+        $result = MinifierCssAssetPaths::prepareCombinedCss($css)['css'];
 
         $this->assertSame(1, substr_count($result, '@import "/fonts.css";'));
     }
 
-    public function testHoistAtRulesHandlesSemicolonsInsideQuotedImportUrls(): void
+    public function testPrepareCombinedCssHandlesSemicolonsInsideQuotedImportUrls(): void
     {
         $css = 'body { color: red; } '
             . '@import "/media/fonts/local.css";'
             . ':root { --font: Fraunces; }';
 
-        $result = MinifierCssAssetPaths::hoistAtRules($css);
+        $result = MinifierCssAssetPaths::prepareCombinedCss($css)['css'];
 
         $this->assertStringStartsWith('@import "/media/fonts/local.css";', $result);
         $this->assertStringContainsString(':root { --font: Fraunces; }', $result);

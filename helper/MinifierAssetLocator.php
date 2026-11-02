@@ -37,7 +37,7 @@ final class MinifierAssetLocator
             }
         }
 
-        return !MinifierAsset::isExternalUrl($path);
+        return !self::isExternalUrl($path);
     }
 
     /**
@@ -66,6 +66,12 @@ final class MinifierAssetLocator
         }
 
         return $resolved;
+    }
+
+    /** Protocol-relative or http(s) URLs, any letter case */
+    private static function isExternalUrl(string $path): bool
+    {
+        return str_starts_with($path, '//') || preg_match('/^https?:\/\//i', $path) === 1;
     }
 
     /**

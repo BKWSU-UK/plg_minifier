@@ -1,19 +1,11 @@
 <?php
 
 /**
- * Asset path utilities shared by the minifier plugin
+ * Web path resolution with path-traversal protection: maps an asset URL to a
+ * file path and refuses anything that resolves outside the site root.
  */
 class MinifierAsset
 {
-    public static function isExternalUrl(string $path): bool
-    {
-        if (str_starts_with($path, '//')) {
-            return true;
-        }
-
-        return preg_match('/^https?:\/\//i', $path) === 1;
-    }
-
     public static function normalisePath(string $path): string
     {
         $path = str_replace('\\', '/', $path);
@@ -93,67 +85,5 @@ class MinifierAsset
         }
 
         return $resolved;
-    }
-
-    public static function isPreMinifiedCss(string $path): bool
-    {
-        return self::hasExtension($path, '.min.css');
-    }
-
-    public static function isPreMinifiedJs(string $path): bool
-    {
-        return self::hasExtension($path, '.min.js');
-    }
-
-    public static function isJqueryCore(string $path): bool
-    {
-        $path = strtolower(explode('?', $path, 2)[0]);
-
-        return preg_match('#/jquery(?:\.min)?\.js$#', $path) === 1;
-    }
-
-    public static function isJqueryNoConflict(string $path): bool
-    {
-        $path = strtolower(explode('?', $path, 2)[0]);
-
-        return str_contains($path, 'jquery-noconflict');
-    }
-
-    public static function isJqueryDependency(string $path): bool
-    {
-        return self::isJqueryCore($path) || self::isJqueryNoConflict($path);
-    }
-
-    public static function fileContentRequiresJquery(string $content): bool
-    {
-        return preg_match('/\bjQuery\s*\(|(?:^|[{;}])\s*\$\s*\(/m', $content) === 1;
-    }
-
-    public static function prepareJsCombineSegment(string $fileContent): string
-    {
-        $fileContent = preg_replace('/\/\/#\s*sourceMappingURL=\S+/', '', $fileContent) ?? $fileContent;
-        $fileContent = trim($fileContent);
-
-        if ($fileContent === '') {
-            return "\n";
-        }
-
-        return ';' . $fileContent . "\n";
-    }
-
-    public static function gapContainsInlineScript(string $html): bool
-    {
-        if ($html === '') {
-            return false;
-        }
-
-        return preg_match('/<script(?![^>]*\bsrc\s*=)[^>]*>/i', $html) === 1;
-    }
-
-    private static function hasExtension(string $path, string $extension): bool
-    {
-        $path = explode('?', $path, 2)[0];
-
-        return str_ends_with(strtolower($path), strtolower($extension));
     }
 }

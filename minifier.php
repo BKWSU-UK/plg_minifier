@@ -133,7 +133,7 @@ class PlgSystemMinifier extends CMSPlugin
         }
 
         // Process individual files
-        $minifier = $this->siblingMinifier($rootPath, $excludeArray);
+        $minifier = new MinifierSiblingMinifier($rootPath, array_values($excludeArray), $this->logger());
 
         for ($index = 0; $index < $tags->count(); $index++) {
             $minifiedUrl = $minifier->minify($tags->url($index), MinifierAssetType::Css);
@@ -183,7 +183,7 @@ class PlgSystemMinifier extends CMSPlugin
         }
 
         // Process individual files
-        $minifier = $this->siblingMinifier($rootPath, $excludeArray);
+        $minifier = new MinifierSiblingMinifier($rootPath, array_values($excludeArray), $this->logger());
 
         for ($index = 0; $index < $tags->count(); $index++) {
             $minifiedUrl = $minifier->minify($tags->url($index), MinifierAssetType::Js);
@@ -194,16 +194,6 @@ class PlgSystemMinifier extends CMSPlugin
         }
 
         return $this->applyEdits($tags, MinifierAssetType::Js);
-    }
-
-    /**
-     * Individual-mode minifier for one asset pass, logging to the plugin's category
-     *
-     * @param array<int, string> $excludeArray Paths to exclude from minification
-     */
-    protected function siblingMinifier(string $rootPath, array $excludeArray): MinifierSiblingMinifier
-    {
-        return new MinifierSiblingMinifier($rootPath, array_values($excludeArray), $this->logger());
     }
 
     /**

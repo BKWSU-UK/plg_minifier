@@ -190,10 +190,21 @@ final class MinifierBundleCache
                 $script = $minifier->minify();
             }
 
-            $content .= "/* File: {$file->webPath} */\n" . MinifierAsset::prepareJsCombineSegment($script);
+            $content .= "/* File: {$file->webPath} */\n" . self::jsSegment($script);
         }
 
         return $content;
+    }
+
+    /**
+     * One script's bundle segment: source map comment dropped, and a leading `;` so a
+     * previous file without a trailing semicolon cannot run into it
+     */
+    private static function jsSegment(string $script): string
+    {
+        $script = trim(preg_replace('/\/\/#\s*sourceMappingURL=\S+/', '', $script) ?? $script);
+
+        return $script === '' ? "\n" : ';' . $script . "\n";
     }
 
     /**

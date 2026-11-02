@@ -66,6 +66,17 @@ class MinifierSiblingMinifierTest extends TestCase
         $this->assertSame($expectedContent, file_get_contents($this->root . $expectedUrl));
     }
 
+    public function testARelativeUrlIsResolvedFromTheSiteRootAndMinified(): void
+    {
+        $this->write('/css/site.css', 'body { color : red ; }');
+
+        $this->assertSame(
+            'css/site.min.css',
+            (new MinifierSiblingMinifier($this->root))->minify('css/site.css', MinifierAssetType::Css)
+        );
+        $this->assertFileExists($this->root . '/css/site.min.css');
+    }
+
     #[\PHPUnit\Framework\Attributes\DataProvider('assets')]
     public function testFreshSiblingIsReusedAndStaleSiblingIsMinifiedAgain(
         MinifierAssetType $type,
@@ -99,9 +110,12 @@ class MinifierSiblingMinifierTest extends TestCase
             $cases += [
                 "$ext external" => [$type, "https://cdn.example.com/$ext/app.$ext"],
                 "$ext protocol-relative" => [$type, "//cdn.example.com/$ext/app.$ext"],
+                "$ext upper-case scheme" => [$type, "HTTPS://cdn.example.com/$ext/app.$ext"],
+                "$ext mixed-case scheme" => [$type, "HttP://cdn.example.com/$ext/app.$ext"],
                 "$ext excluded" => [$type, "/$ext/vendor/app.$ext?v=1"],
                 "$ext missing" => [$type, "/$ext/missing.$ext"],
                 "$ext pre-minified" => [$type, "/$ext/app.min.$ext"],
+                "$ext pre-minified with query" => [$type, "/$ext/app.min.$ext?ver=1"],
             ];
         }
 
@@ -143,5 +157,38 @@ class MinifierSiblingMinifierTest extends TestCase
 
         $this->assertNull($result);
         $this->assertContains('warning', array_column($messages, 0));
+    }
+
+    public static function externalUrls(): array
+    {
+        return [
+            'https' => ['https://cdn.example.com/js/app.js'],
+            'upper-case scheme' => ['HTTPS://cdn.example.com/js/app.js'],
+            'mixed-case scheme' => ['HttP://cdn.example.com/js/app.js'],
+            'protocol-relative' => ['//cdn.example.com/js/app.js'],
+        ];
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('externalUrls')]
+    public function testAnExternalUrlIsSkippedWithoutLookingForALocalFile(string $url): void
+    {
+        $messages = [];
+        $minifier = new MinifierSiblingMinifier(
+            $this->root,
+            log: function (string $level, string $message) use (&$messages): void {
+                $messages[] = $message;
+            }
+        );
+
+        $this->assertNull($minifier->minify($url, MinifierAssetType::Js));
+        $this->assertSame([], $messages);
+    }
+
+    public function testAnUpperCaseMinExtensionCountsAsPreMinified(): void
+    {
+        $this->write('/js/LIB.MIN.JS', 'var l=1');
+
+        $this->assertNull((new MinifierSiblingMinifier($this->root))->minify('/js/LIB.MIN.JS', MinifierAssetType::Js));
+        $this->assertSame([], glob($this->root . '/js/*.min.js'));
     }
 }

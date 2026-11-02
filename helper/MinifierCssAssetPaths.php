@@ -7,13 +7,6 @@ use MatthiasMullie\PathConverter\Converter;
  */
 class MinifierCssAssetPaths
 {
-    public static function stripUtf8Bom(string $cssContent): string
-    {
-        return str_starts_with($cssContent, "\xEF\xBB\xBF")
-            ? substr($cssContent, 3)
-            : $cssContent;
-    }
-
     /**
      * Replaces relative url() and @import paths using the path converter
      */
@@ -212,14 +205,6 @@ class MinifierCssAssetPaths
             'css' => $prefix . $body,
             'externalImports' => $externalImports,
         ];
-    }
-
-    /**
-     * Moves @charset and local @import rules to the top of combined CSS output
-     */
-    public static function hoistAtRules(string $cssContent): string
-    {
-        return self::prepareCombinedCss($cssContent)['css'];
     }
 
     private static function isExternalImportUrl(string $url): bool
